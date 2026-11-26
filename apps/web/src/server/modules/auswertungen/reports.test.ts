@@ -1,6 +1,7 @@
 import type postgres from "postgres";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { leeren, setupTestDb, testDatabaseUrl } from "../../test-db.ts";
+import { kleinunternehmerStand } from "./test-umsatz-stand.ts";
 
 function dkbCsv(rows: string[][]) {
   const header = `"Girokonto";"DE12 1203 0000 1234 5678 90"\n""\n"Kontostand vom 01.10.2026:";"10.000,00 €"\n""\n`;
@@ -25,8 +26,8 @@ const row = (date: string, party: string, purpose: string, amount: string) => [
 ];
 
 describe.skipIf(!testDatabaseUrl)("Auswertungen (Postgres)", () => {
-  let bank: typeof import("../bank/bank.ts");
-  let invoices: typeof import("../rechnungen/invoices.ts");
+  let bank: typeof import("../bank/index.ts");
+  let invoices: typeof import("../rechnungen/index.ts");
   let contacts: typeof import("../stammdaten/contacts.ts");
   let documents: typeof import("../belege/documents.ts");
   let reports: typeof import("./reports.ts");
@@ -35,8 +36,8 @@ describe.skipIf(!testDatabaseUrl)("Auswertungen (Postgres)", () => {
 
   beforeAll(async () => {
     sql = await setupTestDb();
-    bank = await import("../bank/bank.ts");
-    invoices = await import("../rechnungen/invoices.ts");
+    bank = await import("../bank/index.ts");
+    invoices = await import("../rechnungen/index.ts");
     contacts = await import("../stammdaten/contacts.ts");
     documents = await import("../belege/documents.ts");
     reports = await import("./reports.ts");
@@ -106,7 +107,7 @@ describe.skipIf(!testDatabaseUrl)("Auswertungen (Postgres)", () => {
       note: "",
       lines: [{ description: "Leistungen August", quantity: 1000, unit: "Psch.", unitPrice: 400_000, taxRate: 1900 }],
     });
-    const invoice = await invoices.finalizeInvoice(actor, draft.id);
+    const invoice = await invoices.finalizeInvoice(actor, draft.id, kleinunternehmerStand);
 
     const telekom = await bookedDocument(1, {
       supplierName: "Telekom",
@@ -167,7 +168,14 @@ describe.skipIf(!testDatabaseUrl)("Auswertungen (Postgres)", () => {
     await bank.allocate(actor, { kind: "invoice", transactionId: tx(200_000), invoiceId: invoice.id, amount: 100_000 });
     const [wrong] = await sql`select id from allocations`;
     await bank.reverseAllocation(actor, wrong!.id, "2026-10-01");
-    await bank.allocate(actor, { kind: "invoice", transactionId: tx(200_000), invoiceId: invoice.id, amount: 200_000 });
+    // Der aufgehobene Teil bezieht sich auf seine Aufhebung, der nie zugeordnete Rest steht für sich (#1454)
+    await bank.allocateSplit(actor, {
+      transactionId: tx(200_000),
+      parts: [
+        { kind: "invoice", invoiceId: invoice.id, amount: 100_000, reassignsId: wrong!.id as string },
+        { kind: "invoice", invoiceId: invoice.id, amount: 100_000, reassignsId: null },
+      ],
+    });
     await bank.allocate(actor, { kind: "document", transactionId: tx(-4590), documentId: telekom, amount: -4590 });
     await bank.allocate(actor, { kind: "ustVorauszahlung", transactionId: tx(-50_000), amount: -50_000 });
     await bank.allocate(actor, { kind: "gebuehren", transactionId: tx(-990), amount: -990 });
@@ -210,6 +218,96 @@ describe.skipIf(!testDatabaseUrl)("Auswertungen (Postgres)", () => {
     expect(open).toMatchObject({ receivablesTotal: 276_000, payablesTotal: 11_900, receivablesOverdue: 276_000, payablesOverdue: 0 });
     expect(await reports.reportYears()).toEqual([2025, 2026]);
   }, 30_000);
+
+  // Kachel „Umsatz“ der Übersicht: Umsatzerlöse (§ 277 Abs. 1 HGB) nach Buchungsdatum, die Konten nach dem Posten „1.
+  // Umsatzerlöse“ des DATEV-Kontenrahmens (postenOf in @haben/core). Zinsen sind sonstige Erträge, Skonti mindern.
+  const KONTEN = {
+    SKR03: { bank: "1200", erloesKu: "8192", zinsen: "2650", skonti: "8730" },
+    SKR04: { bank: "1800", erloesKu: "4184", zinsen: "7100", skonti: "4730" },
+  } as const;
+  for (const kontenrahmen of ["SKR03", "SKR04"] as const)
+    for (const rechtsform of ["einzelunternehmen", "gmbh"] as const)
+      it(`${kontenrahmen}, ${rechtsform}: Umsatz eines Monats aus dem Journal, auch ohne Rechnung in Haben, ohne Zinsen`, async () => {
+        await leeren(sql)`truncate external_imports, lexoffice_imports cascade`;
+        await sql`update company set kleinunternehmer = true, kontenrahmen = ${kontenrahmen}, rechtsform = ${rechtsform}`;
+        const k = KONTEN[kontenrahmen];
+        const buchung = (externalId: string, date: string, description: string, soll: string, haben: string, betrag: number, taxCode: "KU" | null) => ({
+          kind: "journal" as const,
+          externalId,
+          date,
+          description,
+          lines: [
+            { account: soll, debit: betrag, credit: 0, taxCode },
+            { account: haben, debit: 0, credit: betrag, taxCode },
+          ],
+        });
+        // Erfundene Shop-Verkäufe eines Kleinunternehmers, die nur als Buchung aus dem Datenimport kommen
+        const imports = await import("../datenimport/index.ts");
+        await imports.runExternalImport(
+          actor,
+          {
+            version: 2,
+            source: "shop-test",
+            kontenrahmen,
+            entries: [
+              buchung("verkauf-sep", "2026-09-30", "Shop-Verkauf September", k.bank, k.erloesKu, 2_000, "KU"),
+              buchung("verkauf-okt", "2026-10-15", "Shop-Verkauf Oktober", k.bank, k.erloesKu, 5_000, "KU"),
+              // Gewährter Skonto gehört zu den Umsatzerlösen und mindert sie
+              buchung("skonto-okt", "2026-10-20", "Skonto auf Shop-Verkauf", k.skonti, k.bank, 100, "KU"),
+              // Guthabenzinsen sind Betriebseinnahmen der EÜR, aber kein Umsatz
+              buchung("zinsen-okt", "2026-10-31", "Guthabenzinsen", k.bank, k.zinsen, 120, null),
+              buchung("verkauf-nov", "2026-11-01", "Shop-Verkauf November", k.bank, k.erloesKu, 3_000, "KU"),
+            ],
+            settlements: [],
+          },
+          async () => new Uint8Array(),
+        );
+        expect(await reports.umsatzImMonat("2026-09")).toBe(2_000);
+        expect(await reports.umsatzImMonat("2026-10")).toBe(5_000 - 100);
+        expect(await reports.umsatzImMonat("2026-11")).toBe(3_000);
+        expect(await reports.umsatzImMonat("2026-08")).toBe(0);
+        await expect(reports.umsatzImMonat("2026-13")).rejects.toThrow(/JJJJ-MM/);
+      }, 30_000);
+
+  for (const [kontenrahmen, rechtsform, versteuerung] of [
+    ["SKR03", "einzelunternehmen", "ist"],
+    ["SKR04", "gmbh", "ist"],
+    ["SKR03", "gmbh", "soll"],
+    ["SKR04", "einzelunternehmen", "soll"],
+  ] as const)
+    it(`${kontenrahmen}, ${rechtsform}, ${versteuerung}: Rechnung zählt nach Buchungsdatum, nicht nach Zahlung; das Storno mindert im Monat des Stornos`, async () => {
+      // Nach Ist geht die Steuer auf „Umsatzsteuer nicht fällig“, nach Soll auf „Umsatzsteuer“; die Erlöse sind dieselben
+      await sql`update company set kontenrahmen = ${kontenrahmen}, rechtsform = ${rechtsform}, versteuerung = ${versteuerung}`;
+      const contact = await contacts.createContact(actor, {
+        kundennummer: "",
+        name: "Nordwerk Software GmbH",
+        strasse: "Hafenstraße 5",
+        plz: "20457",
+        ort: "Hamburg",
+        land: "DE",
+        email: "buchhaltung@nordwerk.example",
+        ustId: "",
+        iban: "",
+        leitwegId: "",
+        defaultFormat: null,
+      });
+      const draft = await invoices.createDraft(actor, {
+        contactId: contact.id,
+        issueDate: "2026-10-20",
+        serviceFrom: null,
+        serviceTo: null,
+        paymentTermDays: 14,
+        format: "zugferd",
+        note: "",
+        lines: [{ description: "Leistungen Oktober", quantity: 1000, unit: "Psch.", unitPrice: 100_000, taxRate: 1900 }],
+      });
+      const invoice = await invoices.finalizeInvoice(actor, draft.id, kleinunternehmerStand);
+      // Unbezahlt: Die EÜR hätte im Oktober nichts, der Umsatz zählt mit der Buchung der Rechnung
+      expect(await reports.umsatzImMonat("2026-10")).toBe(100_000);
+      await invoices.cancelInvoice(actor, invoice.id, "2026-11-03");
+      expect(await reports.umsatzImMonat("2026-10")).toBe(100_000);
+      expect(await reports.umsatzImMonat("2026-11")).toBe(-100_000);
+    }, 30_000);
 
   it("Jahresauswahl kennt ein Jahr, das nur über den Datenimport gebucht ist", async () => {
     // 2024 gibt es nur als Buchung aus dem Datenimport, ohne Bankumsatz, Rechnung oder Beleg in Haben

@@ -114,7 +114,7 @@ Caddy signiert Zertifikate für lokale Namen wie `haben.lan` mit seiner eigenen 
 
 | Werkzeug | Liefert |
 | --- | --- |
-| `uebersicht` | aktuelle Voranmeldung mit Zahllast und Fälligkeit, offene und überfällige Rechnungen, Umsatz im Monat, Belege zu prüfen, Bankumsätze ohne Zuordnung, ausstehende AfA, Einspruchsfristen, ELSTER-Zertifikat, nächste Fristen |
+| `uebersicht` | aktuelle Voranmeldung mit Zahllast und Fälligkeit, offene und überfällige Rechnungen, Umsatz netto im Monat und im Vormonat (Erlöskonten nach Buchungsdatum wie die Übersicht), Belege zu prüfen, Bankumsätze ohne Zuordnung, ausstehende AfA, Einspruchsfristen, ELSTER-Zertifikat, nächste Fristen |
 | `fristen` | offene Steuerfristen, auf Wunsch auch Erledigtes der letzten 60 Tage |
 | `offene_posten` | offene Forderungen und Verbindlichkeiten mit Summen und Tagen über Fälligkeit |
 | `ueberfaellige_rechnungen` | überfällige Rechnungen mit letzter Mahnstufe |
@@ -123,16 +123,19 @@ Caddy signiert Zertifikate für lokale Namen wie `haben.lan` mit seiner eigenen 
 | `bankumsaetze_ohne_zuordnung` | Bankumsätze ohne Zuordnung je Konto |
 | `umsatzsteuer_voranmeldung` | Kennzahlen eines Monats oder Quartals aus den Buchungen, gespeicherter Stand, Vorprüfung und Abgleich mit dem Journal |
 | `ustva_ausfuellliste` | Werte der Voranmeldung zum Eintragen in Mein ELSTER, in der Reihenfolge des Formulars, siehe [Mein ELSTER mit KI-Assistent](elster-mit-assistent.md) |
+| `ustid_bestaetigungen` | letzte [Antwort des BZSt](kontakte.md#ust-idnr-beim-bzst-bestätigen) je USt-IdNr. eines Kontakts oder zu einer Nummer: Zeitpunkt, einfach oder qualifiziert, Status, Ergebnis für Name, Straße, PLZ und Ort und ob sie höchstens 30 Tage alt ist; ohne Nummer und Kontakt die Nummern der nächsten Zusammenfassenden Meldung oder eines gewählten Quartals ohne frische gültige Antwort. Fragt nie selbst beim BZSt und gibt die gesendete Anschrift nicht heraus |
 | `euer` | Einnahmen-Überschuss-Rechnung eines Jahres mit Monatswerten |
 | `jahreserklaerung` | Stand von Umsatzsteuererklärung, Anlage EÜR und Einkommensteuer mit Hinweisen und Steuerprognose |
 | `vorausgefuellte_belege` | abgerufene Belege der vorausgefüllten Steuererklärung (VaSt) ohne persönliche Stammdaten |
-| `archiv_auftragsdokumente` | aus sevDesk archivierte Angebote, Auftragsbestätigungen und Lieferscheine eines Jahres, filterbar nach Art und Nummer oder Kontakt, siehe [Umzug aus sevDesk](sevdesk.md#angebote-auftragsbestätigungen-und-lieferscheine) |
+| `archiv_auftragsdokumente` | aus sevDesk, FastBill oder lokalen Paketen archivierte Angebote, Auftragsbestätigungen und Lieferscheine eines Jahres, filterbar nach Art und Nummer oder Kontakt, siehe [Umzug aus sevDesk](sevdesk.md#angebote-auftragsbestätigungen-und-lieferscheine) und [Umzug aus FastBill](fastbill.md#angebote) |
 | `archiv_auftragsdokument` | ein archiviertes Auftragsdokument mit Positionen und Dateien |
 | `lexoffice_abgleich` | Umzug aus Lexware Office: Verbindung, letzter Abruf mit fehlgeschlagenen Belegen, je Jahr die Prüfungen, Summen, Steuerarten und die nachgerechnete Umsatzsteuer je Monat |
 | `lexoffice_belege` | abgerufene Lexoffice-Belege eines Jahres oder Monats mit Beträgen je Steuersatz, Steuerart und Zahlungen |
 | `lexoffice_beleg` | ein Lexoffice-Beleg mit allen Feldern, Dateien und der gespeicherten Antwort der API (ohne Steuernummern) |
 | `lexoffice_konten` | Soll, Haben und Saldo je Konto aus dem archivierten DATEV-Buchungsstapel für ein Jahr oder einen Monat, mit Summen der Erträge und Aufwendungen |
 | `lexoffice_buchungen` | einzelne DATEV-Buchungen eines Jahres oder Monats, filterbar nach Konto oder nach Buchungen ohne passenden Beleg |
+
+Listen kommen in Seiten: `offene_posten`, `rechnungen`, `belege`, `bankumsaetze_ohne_zuordnung`, `archiv_auftragsdokumente`, `lexoffice_belege` und `lexoffice_buchungen` nehmen `limit` (Standard 50, höchstens 200) und `offset` wie die [REST-API](api.md) und nennen mit `total` die Zahl aller Treffer, damit der Assistent weiterblättern kann. Bei `offene_posten` und `bankumsaetze_ohne_zuordnung` gilt der `offset` für jede Teilliste (Forderungen und Verbindlichkeiten, jedes Konto), `total` steht je Teilliste.
 
 ### Voranmeldungen aus Lexware Office vergleichen
 
@@ -144,7 +147,7 @@ Die `lexoffice_`-Werkzeuge helfen beim [Umzug aus Lexoffice](lexoffice.md). Was 
 
 Den Abruf selbst und das Hochladen der Exporte machst du in Haben. PDFs im Archiv kann der Assistent nicht lesen.
 
-Beträge kommen in Euro, Datumsangaben als JJJJ-MM-TT. Die Listen sind auf 50 Einträge begrenzt (bis 200 auf Wunsch).
+Beträge kommen in Euro, Datumsangaben als JJJJ-MM-TT.
 
 ## Protokoll und Grenzen
 

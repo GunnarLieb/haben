@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ASSET_ACCOUNTS } from "./afa.ts";
 import { abschluss, type Posten, postenForSaldo, postenOf } from "./hgb.ts";
 import { LOHN_KONTEN } from "./lohn-buchung.ts";
+import { SACHENTNAHME_FRUEHERE_KONTEN, SACHENTNAHME_KONTEN } from "./manual.ts";
 import { PAUSCHALE_KONTEN } from "./pauschalen.ts";
 import { ACCOUNTS, EXPENSE_CATEGORIES, paymentProviderAccount, type Kontenrahmen } from "./posting.ts";
 import { PRIVATE_USE_ACCOUNTS } from "./private-use.ts";
@@ -64,6 +65,17 @@ describe("Zuordnung zu Bilanz und GuV (§ 266, § 275 Abs. 5 HGB)", () => {
     ["SKR04", "7600", "steuern"],
   ] as const)("%s %s → %s", (kr, account, posten) => {
     expect(postenOf(kr, account)).toBe(posten);
+  });
+
+  // Die Kachel „Umsatz“ der Übersicht zählt nur Umsatzerlöse: private Nutzung und Sachentnahme, auf die Haben bucht, gehören nicht dazu
+  it.each(
+    (["SKR03", "SKR04"] as const).flatMap((kr) =>
+      [...Object.values(PRIVATE_USE_ACCOUNTS[kr]), ...Object.values(SACHENTNAHME_KONTEN[kr]), ...Object.keys(SACHENTNAHME_FRUEHERE_KONTEN[kr])].map(
+        (account) => [kr, account] as const,
+      ),
+    ),
+  )("unentgeltliche Wertabgabe %s %s ist ein sonstiger Ertrag", (kr, account) => {
+    expect(postenOf(kr, account)).toBe("sonstigeErtraege");
   });
 
   it.each([
@@ -239,6 +251,9 @@ describe("Posten aus dem DATEV-Kontenrahmen 2026", () => {
     ["SKR03", "2498", null, null, "SKR03 S. 16: Einstellungen in die Rücklage für Anteile an einem herrschenden … Unternehmen"],
     ["SKR03", "2499", null, null, "SKR03 S. 16: Einstellungen in andere Gewinnrücklagen"],
     ["SKR03", "2745", null, null, "SKR03 S. 17: Ertrag aus Kapitalherabsetzung (wie SKR04 7755)"],
+    // Gewinnrücklagen (§ 266 Abs. 3 A. III. 1. HGB): Eigenkapital; die UG bildet sie nach § 5a Abs. 3 GmbHG
+    ["SKR03", "0846", "passiva.A", "passiva.A", "SKR03 S. 3: Gesetzliche Rücklage"],
+    ["SKR04", "2930", "passiva.A", "passiva.A", "SKR04 S. 10: Gesetzliche Rücklage"],
     // „Auf Grund einer Gewinngemeinschaft … abgeführte Gewinne [oder Erträge aus Verlustübernahme]“: Aufwand
     ["SKR03", "2491", "sonstigeAufwendungen", "sonstigeErtraege", "SKR03 S. 15: … abgeführte Gewinne oder Erträge aus Verlustübernahme"],
     ["SKR03", "2492", "sonstigeAufwendungen", "sonstigeAufwendungen", "SKR03 S. 16: … abgeführte Gewinne"],

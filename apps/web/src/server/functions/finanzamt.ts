@@ -19,6 +19,7 @@ import {
   autoFetchStatus,
   disableAutoFetch,
   enableAutoFetch,
+  erledigtVermerken,
   fetchPostfach,
   lastPostfachRequest,
   listPostfachDocuments,
@@ -60,6 +61,8 @@ export const getFinanzamt = createServerFn({ method: "GET" })
       autoFetch,
       // Einkommensteuer-Vorauszahlungen hat nur ein Einzelunternehmen; eine GmbH oder UG zahlt Körperschaftsteuer
       basis: isKapitalgesellschaft(company.rechtsform) ? null : basis,
+      // Der Haken „Keine Einkommensteuer-Vorauszahlungen festgesetzt“ steuert den Hinweis im Reiter (#1287)
+      keineVorauszahlungen: company.taxpayer.keineVorauszahlungen ?? false,
       messages,
       certificate: certificate ? { filename: certificate.filename } : null,
       mode: elsterMode(),
@@ -101,3 +104,12 @@ export const disablePostfachAutoFetch = createServerFn({ method: "POST" })
     await disableAutoFetch(context.user.id);
     return { ok: true };
   });
+
+/**
+ * Bescheid als geprüft abhaken oder wieder öffnen (#1819). Der Vermerk ist ein Ereignis, kein Zustandsfeld: `postfach_documents`
+ * bleibt unverändert, und im Audit-Log steht, wer wann abgehakt hat.
+ */
+export const markPostfachDocument = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator(z.object({ id: z.string().uuid(), art: z.enum(["geprueft", "wieder_offen"]) }))
+  .handler(async ({ data, context }) => erledigtVermerken(data.id, data.art, context.user.id));

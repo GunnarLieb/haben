@@ -258,6 +258,14 @@ test("Ausbuchung aufheben fragt mit Art und Betrag nach", async () => {
   await page.waitForURL(/rechnungen\/[0-9a-f-]{36}$/);
   await page.waitForLoadState("networkidle");
   const karte = page.getByRole("region", { name: "Ausbuchen" });
+  // Nicht lesbarer Betrag: Meldung am Feld, Fokus dort, nichts ausgebucht (#1270)
+  const betrag = karte.getByLabel("Betrag");
+  await betrag.fill("12€50");
+  await karte.getByRole("button", { name: "Ausbuchen" }).click();
+  await expect(karte.getByText("Trag einen Betrag über 0 bis zum offenen Rest ein, etwa 595,00.")).toBeVisible();
+  await expect(betrag).toBeFocused();
+  await expect(karte.getByRole("button", { name: "Aufheben", exact: true })).toHaveCount(0);
+  await betrag.fill("595,00");
   await karte.getByRole("button", { name: "Ausbuchen" }).click();
   const aufheben = karte.getByRole("button", { name: "Aufheben", exact: true });
   await expect(aufheben).toBeVisible();
@@ -490,6 +498,28 @@ test("Belege per E-Mail: Tab aus dem letzten Feld und Enter entfernt das Postfac
   await tabUndEnterBehaeltZugang(page.getByRole("form", { name: "Belege per E-Mail" }), "Jetzt abrufen");
 });
 
+test("Belege per E-Mail: Umstellen auf „Löschen“ fragt vor dem Speichern nach (#1419)", async () => {
+  await go("/einstellungen?bereich=email");
+  const karte = page.getByRole("form", { name: "Belege per E-Mail" });
+  await karte.getByLabel("IMAP-Server").fill("127.0.0.1");
+  await karte.getByLabel("Benutzername", { exact: true }).fill("max");
+  await karte.getByLabel("Passwort", { exact: true }).fill("geheim");
+  await karte.getByLabel("Mail im Postfach").selectOption("delete");
+  await karte.getByRole("button", { name: "Speichern" }).click();
+  await expect(rueckfrage("Abgerufene Mails löschen?")).toContainText("Mailtext und Original sind danach weg");
+  await abbrechen("Abgerufene Mails löschen?");
+  await expect(karte.getByRole("status")).toHaveCount(0);
+  await karte.getByRole("button", { name: "Speichern" }).click();
+  await bestaetigen(page, "Löschen aktivieren");
+  await expect(karte.getByRole("status")).toHaveText("Postfach gespeichert.");
+  await go("/einstellungen?bereich=email");
+  await expect(karte.getByLabel("Mail im Postfach")).toHaveValue("delete");
+  // Schon auf „Löschen“ gestellt: weiteres Speichern fragt nicht erneut
+  await karte.getByLabel("Passwort", { exact: true }).fill("geheim");
+  await karte.getByRole("button", { name: "Speichern" }).click();
+  await expect(karte.getByRole("status")).toHaveText("Postfach gespeichert.");
+});
+
 test("E-Mail-Versand: Tab aus dem letzten Feld und Enter entfernt den Zugang nicht (#394)", async () => {
   await go("/einstellungen?bereich=email");
   const karte = page.getByRole("form", { name: "E-Mail-Versand" });
@@ -651,16 +681,47 @@ test("Umzug: Die Frage eines inzwischen beendeten Abrufs kommt beim nächsten Ab
   await expect(rueckfrage("Abruf abbrechen?")).toHaveCount(0, { timeout: 10_000 });
 
   // Später ein neuer Abruf. Der Start-Aufruf bräuchte einen echten Schlüssel; hier legt er nur den Lauf an wie der Server
-  await page.route(
-    (url) => url.pathname.includes("_serverFn"),
-    async (route) => {
-      if (route.request().method() !== "POST") return route.fallback();
-      await sql`insert into lexoffice_imports (source, status, progress) values ('lexoffice', 'laeuft', ${fortschritt}::jsonb)`;
-      return route.continue({ url: antwort.url(), method: "GET" });
-    },
-  );
+  const serverFn = (url: URL) => url.pathname.includes("_serverFn");
+  await page.route(serverFn, async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    await sql`insert into lexoffice_imports (source, status, progress) values ('lexoffice', 'laeuft', ${fortschritt}::jsonb)`;
+    return route.continue({ url: antwort.url(), method: "GET" });
+  });
   await page.getByRole("button", { name: "Erneut abrufen" }).click();
   await expect(page.getByText("Läuft: Belege und Dateien")).toBeVisible({ timeout: 10_000 });
 
   await expect(rueckfrage("Abruf abbrechen?")).toHaveCount(0);
+  // Die Route nur für diesen Test aufheben: sonst fängt sie die Server-Aufrufe der nachfolgenden Tests ab
+  await page.unroute(serverFn);
+});
+
+test("Bank: ein zweites Konto für denselben Marktplatz fragt vorher nach (#1779)", async () => {
+  await go("/bank");
+  const form = page.locator("form", { has: page.getByRole("button", { name: "Konto anlegen" }) });
+  const anlegen = async (name: string) => {
+    await page.getByRole("button", { name: "Konto hinzufügen" }).click();
+    await form.getByLabel("Art", { exact: true }).selectOption("provider");
+    await form.getByLabel("Dienstleister", { exact: true }).selectOption("amazon");
+    await form.getByLabel("Marktplatz", { exact: true }).selectOption("Amazon.de");
+    await form.getByLabel("Name", { exact: true }).fill(name);
+    await form.getByRole("button", { name: "Konto anlegen" }).click();
+  };
+  const konten = page.getByRole("navigation", { name: "Konten" }).getByRole("link");
+  const zweites = konten.filter({ hasText: "Amazon DE 2" });
+
+  await anlegen("Amazon DE");
+  await expect(page.getByText("Konto angelegt.")).toBeVisible();
+
+  // Zweites Konto für denselben Marktplatz: erst fragen; Abbrechen legt nichts an
+  await anlegen("Amazon DE 2");
+  const titel = "Noch ein Konto für Amazon.de anlegen?";
+  await expect(rueckfrage(titel)).toContainText("gibt es schon ein Konto");
+  await abbrechen(titel);
+  await expect(zweites).toHaveCount(0);
+
+  // Erneut abschicken, jetzt bestätigen: das zweite Konto entsteht
+  await form.getByRole("button", { name: "Konto anlegen" }).click();
+  await expect(rueckfrage(titel)).toBeVisible();
+  await bestaetigen(page, "Konto trotzdem anlegen");
+  await expect(zweites).toHaveCount(1);
 });

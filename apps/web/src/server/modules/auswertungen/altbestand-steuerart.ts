@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 
 /**
  * Steuerart in den Werten von Lexoffice aus VAT_CASE der Rechnung (https://apidocs.fastbill.com/fastbill/en/invoice.html),
- * eingeordnet nach UStG: standard → regulär; small_business_regulation → steuerfrei, nicht gemeldet (§ 19 Abs. 1 UStG);
+ * eingeordnet nach UStG: standard → regulär; small_business_regulation → steuerfrei (§ 19 Abs. 1 UStG, ab 2025 Kz 48, vorher nicht gemeldet);
  * b2b_eu_goods → innergemeinschaftliche Lieferung Kz 41 (§ 4 Nr. 1 Buchst. b, § 6a); b2b_eu_services → sonstige Leistung im
  * übrigen Gemeinschaftsgebiet Kz 21 (§ 3a Abs. 2, § 18b Satz 1 Nr. 2), wie Lexoffice „externalService13b“; b2b_noneu_goods
  * und b2c_noneu_goods → Ausfuhr Kz 43 (§ 4 Nr. 1 Buchst. a, § 6; bei B2C nur, wenn der Unternehmer befördert, § 6 Abs. 1
@@ -25,8 +25,10 @@ export function fastbillTaxType(t: string): string {
 
 /**
  * Steuerart aus der gespeicherten API-Antwort, in den Werten von Lexoffice. Lexoffice: Rechnungsmodul unter taxConditions,
- * Buchhaltungsbelege direkt. sevDesk: Steuerregel (Update 2.0), sonst die ältere taxType; Reverse Charge (Regel 5)
- * lässt sich nicht eindeutig einer Kennzahl zuordnen und bleibt unbekannt; eine eigene Steuerart (taxType custom) ordnet
+ * Buchhaltungsbelege direkt. sevDesk: Steuerregel (Update 2.0), sonst die ältere taxType. Die Kennzahlen nennt die
+ * OpenAPI (https://api.sevdesk.de/openapi.yaml, „VAT rules“): 5 „Reverse Charge gem. §13b UStG (field 60)“ Kz 60,
+ * 21 „Reverse Charge gem. §18b UStG (field 21)“ Kz 21, 17 „Nicht im Inland steuerbare Leistung“ (alt taxType noteu)
+ * Kz 45, im DATEV-Export auf SKR03 8338 (#472), 18 bis 20 One-Stop-Shop außerhalb der Voranmeldung; eine eigene Steuerart (taxType custom) ordnet
  * sevdesk-steuerarten.ts über ihre Kennzahlen zu. FastBill: VAT_CASE.
  */
 export function taxTypeOf(t: string) {
@@ -34,9 +36,12 @@ export function taxTypeOf(t: string) {
     when ${t}.source = 'sevdesk' then
       case coalesce(${t}.raw->'taxRule'->>'id', '')
         when '1' then 'net' when '2' then 'thirdPartyCountryDelivery' when '3' then 'intraCommunitySupply'
-        when '4' then 'vatfree' when '11' then 'vatfree'
+        when '4' then 'vatfree' when '5' then 'constructionService13b' when '11' then 'vatfree'
+        when '17' then 'thirdPartyCountryService' when '21' then 'externalService13b'
+        when '18' then 'oss' when '19' then 'oss' when '20' then 'oss'
         when '' then case coalesce(${t}.raw->>'taxType', 'default')
           when 'default' then 'net' when 'eu' then 'intraCommunitySupply' when 'ss' then 'vatfree'
+          when 'noteu' then 'thirdPartyCountryService'
           else 'sevdesk:' || (${t}.raw->>'taxType') end
         else 'sevdesk:taxRule' || (${t}.raw->'taxRule'->>'id') end
     else coalesce(${t}.raw->'taxConditions'->>'taxType', ${t}.raw->>'taxType') end`);

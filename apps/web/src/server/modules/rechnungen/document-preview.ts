@@ -40,6 +40,7 @@ import { UserError } from "../../errors.ts";
 import {
   type Company,
   customLayoutFor,
+  mitEingebautemLayout,
   customLayoutJob,
   dataForVersion,
   ansprechpartnerSnapshot,
@@ -51,11 +52,13 @@ import {
   rendererFor,
   typstMeldung,
 } from "../stammdaten/index.ts";
-import { buyerFrom, sellerFrom } from "./invoices.ts";
+import { deductedRefs } from "./advance-deductions.ts";
+import { buyerFrom, sellerFrom } from "./invoice-document.ts";
 import { directDebitFor } from "./lastschrift.ts";
 import { documentReferences, referenceColumns, referenceFieldsSchema } from "./order-references.ts";
 import { quoteCalculation } from "./quotes.ts";
 import { outgoingTaxColumns, outgoingTaxDetailsSchema } from "./tax-details.ts";
+import { angebotMitPlatzhaltern, rechnungMitPlatzhaltern } from "./beleg-platzhalter.ts";
 
 /*
  * Echtes Blatt für die Vorschau der Belegeditoren: dieselbe Vorlage und dieselben Daten wie beim PDF, aber aus dem
@@ -95,6 +98,8 @@ export const documentPreviewSchema = z.object({
         taxRate: inBasisPoints(z.number().int()),
         discount: z.nullable(discountSchema).default(null),
         kind: z.enum(QUOTE_LINE_KINDS).nullable().default(null),
+        /** Arbeits-, Maschinen- und Fahrtkosten (§ 35a EStG, #712) */
+        arbeitskosten: z.boolean().default(false),
         /** Abzug einer Abschlagsrechnung: zählt nicht zur Grundlage des Gesamtrabatts (discountBasis) */
         deductionOf: z.string().max(100).optional(),
       }),
@@ -135,8 +140,11 @@ export interface DocumentPreview extends RenderedSheet {
 
 /** Ungespeicherte Gestaltung aus dem Panel über der gespeicherten */
 export function withDesign(letterhead: Letterhead, design: Input["design"]): Letterhead {
-  const { accent, ...options } = design;
-  return { ...letterhead, ...(accent ? { accent } : {}), options: { ...DEFAULT_OPTIONS, ...letterhead.options, ...options } };
+  // Die Optionen der Layouts gehören nicht zu den Schaltern; renderPreview nimmt sie mit dem Layout der Belegart
+  const { accent, layoutOptions: _layoutOptions, ...options } = design;
+  // Wie beim Speichern (saveDesign): Eine eigene Farbe gilt statt der des Layouts, solange das Panel nichts anderes sagt
+  const eigeneFarbe = accent ? { accentFromLayout: false } : {};
+  return { ...letterhead, ...(accent ? { accent } : {}), options: { ...DEFAULT_OPTIONS, ...letterhead.options, ...eigeneFarbe, ...options } };
 }
 
 async function previewBuyer(contactId: string | null, contactPersonId: string | null): Promise<Buyer> {
@@ -149,7 +157,14 @@ async function previewBuyer(contactId: string | null, contactPersonId: string | 
   return found ? buyerFrom(found.contact, person) : { name: "[Kunde wählen]", strasse: "", plz: "", ort: "", land: "DE" };
 }
 
-function invoiceDocument(input: Input, company: Company, buyer: Buyer, letterhead: Letterhead, directDebit: InvoiceDocument["directDebit"]): InvoiceDocument {
+function invoiceDocument(
+  input: Input,
+  company: Company,
+  buyer: Buyer,
+  letterhead: Letterhead,
+  directDebit: InvoiceDocument["directDebit"],
+  deducted: NonNullable<InvoiceDocument["deducted"]>,
+): InvoiceDocument {
   if (input.kind === "angebot") throw new DocumentPreviewError("Ein Angebot ist keine Rechnung.");
   const { lineNets, totals } = computeInvoice(input.lines, input.priceMode, input.discount);
   const treatment = input.taxTreatment;
@@ -180,6 +195,7 @@ function invoiceDocument(input: Input, company: Company, buyer: Buyer, letterhea
       net: lineNets[index]!,
       ...(line.discount ? { discount: line.discount } : {}),
       ...(line.deductionOf ? { deductionOf: line.deductionOf } : {}),
+      ...(line.arbeitskosten ? { arbeitskosten: true } : {}),
     })),
     totals,
     ...(input.discount ? { discount: input.discount } : {}),
@@ -192,6 +208,7 @@ function invoiceDocument(input: Input, company: Company, buyer: Buyer, letterhea
     ...(exemptionReason ? { exemptionReason } : {}),
     language: input.language,
     ...(input.variant ? { variant: input.variant } : {}),
+    ...(deducted.length > 0 ? { deducted } : {}),
     ...documentReferences(referenceColumns(input)),
     ...(directDebit ? { directDebit } : {}),
     ...(input.kind === "rechnung" && input.paidPayment ? { paidPayment: input.paidPayment } : {}),
@@ -225,6 +242,7 @@ function quoteDocument(input: Input, company: Company, buyer: Buyer, letterhead:
       ...(line.discount ? { discount: line.discount } : {}),
       ...(line.kind ? { kind: line.kind } : {}),
       ...(line.kind === "alternative" ? { alternativeTo: alternativeMain(lines, line.position) ?? 0 } : {}),
+      ...(line.arbeitskosten ? { arbeitskosten: true } : {}),
     })),
     totals: calc.totals,
     ...(input.discount ? { discount: input.discount } : {}),
@@ -257,13 +275,22 @@ export async function documentPreview(input: Input): Promise<DocumentPreview> {
     company,
     db,
   );
+  // Abgezogene Abschlagsrechnungen wie im Entwurfs-PDF, mit ihrem Anteil nach § 35a EStG (#1667); nur IDs, die es geben kann
+  const deducted = input.kind === "rechnung" ? await deductedRefs(input.lines.filter((line) => z.uuid().safeParse(line.deductionOf).success)) : [];
   const t = texts(input.language, input.currency);
   const data =
     input.kind === "angebot"
-      ? quotePdfData(quoteDocument(input, company, buyer, letterhead))
-      : pdfData(invoiceDocument(input, company, buyer, letterhead, directDebit));
+      ? quotePdfData(angebotMitPlatzhaltern(quoteDocument(input, company, buyer, letterhead)))
+      : pdfData(rechnungMitPlatzhaltern(invoiceDocument(input, company, buyer, letterhead, directDebit, deducted)));
   const { draft: _noMark, ...sheet } = asDraft(data, t);
-  return renderPreview(input.kind === "angebot" ? "angebot" : "rechnung", "rechnung.typ", sheet, letterhead, () => sheetText(sheet as unknown as SheetData));
+  return renderPreview(
+    input.kind === "angebot" ? "angebot" : "rechnung",
+    "rechnung.typ",
+    sheet,
+    letterhead,
+    () => sheetText(sheet as unknown as SheetData),
+    input.design.layoutOptions,
+  );
 }
 
 /**
@@ -276,11 +303,13 @@ export async function renderPreview(
   sheet: object,
   letterhead: Letterhead,
   text: () => SheetTextPart[],
+  /** Ungespeicherte Optionen der eingebauten Layouts aus dem Panel */
+  layoutOptions?: Record<string, Record<string, string>>,
 ): Promise<DocumentPreview> {
   const layout = await customLayoutFor(type);
   const job = layout
     ? await customLayoutJob(layout, dataForVersion(layout.schemaVersion, templateInputs(sheet, letterhead)), letterhead)
-    : renderJob(template, sheet, letterhead);
+    : renderJob(template === "mahnung.typ" ? "mahnung" : "beleg", sheet, await mitEingebautemLayout(type, letterhead, layoutOptions));
   try {
     const renderer = layout ? await rendererFor(layout) : layoutRenderer;
     return { ...(await renderer.render(job)), text: text() };

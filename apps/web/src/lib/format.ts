@@ -9,6 +9,8 @@ const dayMonthFormat = new Intl.DateTimeFormat("de-DE", { day: "2-digit", month:
 export const formatDate = (value: string | Date) => dateFormat.format(new Date(value));
 export const formatLongDate = (value: string | Date) => longDateFormat.format(new Date(value));
 export const formatDateTime = (value: string | Date) => dateTimeFormat.format(new Date(value));
+const timeFormat = new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit", timeZone });
+export const formatTime = (value: string | Date) => timeFormat.format(new Date(value));
 
 /**
  * Zeitraum vom Jahresanfang bis zum Stichtag, einheitlich geschrieben: „01.01.2026–14.11.2026".
@@ -44,6 +46,12 @@ export function relativeDays(days: number): string {
 
 export function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Unbekannter Fehler";
+}
+
+/** Felder, an denen ein Fachfehler des Servers liegt (`felder` am UserError); leer, wenn er keine nennt */
+export function fehlerFelder(error: unknown): string[] {
+  const felder = (error as { felder?: unknown } | null)?.felder;
+  return Array.isArray(felder) ? felder.filter((feld): feld is string => typeof feld === "string") : [];
 }
 
 /** Nutzungsdauer „2,5“ oder „2.5“ Jahre in ganzen Monaten; null, wenn leer, nicht positiv oder kein ganzer Monat */

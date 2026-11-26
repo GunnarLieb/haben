@@ -12,6 +12,7 @@ import {
   VAT_FREQUENCIES,
   type VatPeriod,
   inCents,
+  KENNZAHL_GRENZE,
 } from "@haben/core";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
@@ -32,6 +33,7 @@ import {
   saveFrequency,
   submitDauerfrist,
   filingsFor,
+  ungueltigeUstIdNrn,
   ustvaPosten,
   ustvaPostenForPeriod,
   VatError,
@@ -60,7 +62,7 @@ import { loadActiveCertificate } from "../modules/elster/index.ts";
 import { transitBalance } from "../modules/buchhaltung/index.ts";
 
 // Negativ möglich, etwa wenn Gutschriften im Monat überwiegen
-const centsSchema = inCents(z.number().int().min(-1_000_000_000_00).max(1_000_000_000_00));
+const centsSchema = inCents(z.number().int().min(-KENNZAHL_GRENZE).max(KENNZAHL_GRENZE));
 
 function certificateSummary(certificate: Awaited<ReturnType<typeof loadActiveCertificate>>) {
   return certificate ? { filename: certificate.filename, validUntil: certificate.validUntil } : null;
@@ -195,6 +197,8 @@ export const getOverview = createServerFn({ method: "GET" })
       companyIssues: companyIssues(company),
       companyName: company.name,
       mode: elsterMode(),
+      /** USt-IdNrn. von EU-Kunden, die das BZSt nicht gültig nennt (#1489) */
+      ustIdUngueltig: (await ungueltigeUstIdNrn(today(now))).map((u) => ({ contactId: u.contactId, kontakt: u.kontakt, nummer: u.nummer, meldung: u.meldung })),
     };
   });
 
@@ -223,6 +227,8 @@ export const saveVatDraft = createServerFn({ method: "POST" })
         kz93: centsSchema.default(0),
         kz61: centsSchema.default(0),
         kz62: centsSchema.default(0),
+        // Im ERiC-Schema nie negativ (GanzzahlNichtNeg)
+        kz50: inCents(z.number().int().min(0, "Kz 50 ist nie negativ.").max(KENNZAHL_GRENZE)).default(0),
         kz39: centsSchema.default(0),
         reason: z.string().trim().min(10, "Bitte begründen, warum von den berechneten Werten abgewichen wird (mindestens 10 Zeichen).").max(1000),
       }),

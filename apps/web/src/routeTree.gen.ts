@@ -37,6 +37,7 @@ import { Route as ApiHealthRouteImport } from './routes/api/health'
 import { Route as ApiKennzeichenRouteImport } from './routes/api/kennzeichen'
 import { Route as ApiLogoRouteImport } from './routes/api/logo'
 import { Route as ApiMcpRouteImport } from './routes/api/mcp'
+import { Route as ApiMetricsRouteImport } from './routes/api/metrics'
 import { Route as EinladungTokenRouteImport } from './routes/einladung.$token'
 import { Route as OauthAutorisierenRouteImport } from './routes/oauth/autorisieren'
 import { Route as DotwellKnownOauthProtectedResourceSplatRouteImport } from './routes/[.]well-known/oauth-protected-resource.$'
@@ -50,6 +51,8 @@ import { Route as AppAnlagenIdRouteImport } from './routes/_app/anlagen/$id'
 import { Route as AppAnlagenNeuRouteImport } from './routes/_app/anlagen/neu'
 import { Route as AppArchivIndexRouteImport } from './routes/_app/archiv/index'
 import { Route as AppArtikelIndexRouteImport } from './routes/_app/artikel/index'
+import { Route as AppAuswertungenBwaRouteImport } from './routes/_app/auswertungen_.bwa'
+import { Route as AppAuswertungenLiquiditaetRouteImport } from './routes/_app/auswertungen_.liquiditaet'
 import { Route as AppBelegeIndexRouteImport } from './routes/_app/belege/index'
 import { Route as AppBelegeIdRouteImport } from './routes/_app/belege/$id'
 import { Route as AppBuchungenIndexRouteImport } from './routes/_app/buchungen/index'
@@ -84,6 +87,8 @@ import { Route as ApiBelegIdRouteImport } from './routes/api/beleg/$id'
 import { Route as ApiBelegeTeilenRouteImport } from './routes/api/belege/teilen'
 import { Route as ApiDatevJahrRouteImport } from './routes/api/datev/$jahr'
 import { Route as ApiDauerbelegIdRouteImport } from './routes/api/dauerbeleg/$id'
+import { Route as ApiEinstellungenExportRouteImport } from './routes/api/einstellungen/export'
+import { Route as ApiEtsyCallbackRouteImport } from './routes/api/etsy/callback'
 import { Route as ApiExportJahrRouteImport } from './routes/api/export/$jahr'
 import { Route as ApiFristenKalenderRouteImport } from './routes/api/fristen/kalender'
 import { Route as ApiHinterlegungJahrRouteImport } from './routes/api/hinterlegung/$jahr'
@@ -100,6 +105,7 @@ import { Route as ApiRechnungsanhangIdRouteImport } from './routes/api/rechnungs
 import { Route as ApiStandardanhangIdRouteImport } from './routes/api/standardanhang/$id'
 import { Route as ApiSvProtokollIdRouteImport } from './routes/api/sv-protokoll/$id'
 import { Route as ApiUeberweisungIdRouteImport } from './routes/api/ueberweisung/$id'
+import { Route as ApiUstidBestaetigungIdRouteImport } from './routes/api/ustid-bestaetigung/$id'
 import { Route as ApiUstvaIdRouteImport } from './routes/api/ustva/$id'
 import { Route as ApiV1SplatRouteImport } from './routes/api/v1/$'
 import { Route as ApiVastIdRouteImport } from './routes/api/vast/$id'
@@ -269,6 +275,11 @@ const ApiMcpRoute = ApiMcpRouteImport.update({
   path: '/api/mcp',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiMetricsRoute = ApiMetricsRouteImport.update({
+  id: '/api/metrics',
+  path: '/api/metrics',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const EinladungTokenRoute = EinladungTokenRouteImport.update({
   id: '/einladung/$token',
   path: '/einladung/$token',
@@ -335,6 +346,17 @@ const AppArtikelIndexRoute = AppArtikelIndexRouteImport.update({
   path: '/artikel/',
   getParentRoute: () => AppRoute,
 } as any)
+const AppAuswertungenBwaRoute = AppAuswertungenBwaRouteImport.update({
+  id: '/auswertungen_/bwa',
+  path: '/auswertungen/bwa',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAuswertungenLiquiditaetRoute =
+  AppAuswertungenLiquiditaetRouteImport.update({
+    id: '/auswertungen_/liquiditaet',
+    path: '/auswertungen/liquiditaet',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppBelegeIndexRoute = AppBelegeIndexRouteImport.update({
   id: '/belege/',
   path: '/belege/',
@@ -507,6 +529,16 @@ const ApiDauerbelegIdRoute = ApiDauerbelegIdRouteImport.update({
   path: '/api/dauerbeleg/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiEinstellungenExportRoute = ApiEinstellungenExportRouteImport.update({
+  id: '/api/einstellungen/export',
+  path: '/api/einstellungen/export',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiEtsyCallbackRoute = ApiEtsyCallbackRouteImport.update({
+  id: '/api/etsy/callback',
+  path: '/api/etsy/callback',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiExportJahrRoute = ApiExportJahrRouteImport.update({
   id: '/api/export/$jahr',
   path: '/api/export/$jahr',
@@ -585,6 +617,11 @@ const ApiSvProtokollIdRoute = ApiSvProtokollIdRouteImport.update({
 const ApiUeberweisungIdRoute = ApiUeberweisungIdRouteImport.update({
   id: '/api/ueberweisung/$id',
   path: '/api/ueberweisung/$id',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiUstidBestaetigungIdRoute = ApiUstidBestaetigungIdRouteImport.update({
+  id: '/api/ustid-bestaetigung/$id',
+  path: '/api/ustid-bestaetigung/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiUstvaIdRoute = ApiUstvaIdRouteImport.update({
@@ -765,6 +802,7 @@ export interface FileRoutesByFullPath {
   '/api/kennzeichen': typeof ApiKennzeichenRoute
   '/api/logo': typeof ApiLogoRoute
   '/api/mcp': typeof ApiMcpRoute
+  '/api/metrics': typeof ApiMetricsRoute
   '/einladung/$token': typeof EinladungTokenRoute
   '/oauth/autorisieren': typeof OauthAutorisierenRoute
   '/.well-known/oauth-protected-resource/$': typeof DotwellKnownOauthProtectedResourceSplatRoute
@@ -773,6 +811,8 @@ export interface FileRoutesByFullPath {
   '/angebote/neu': typeof AppAngeboteNeuRoute
   '/anlagen/$id': typeof AppAnlagenIdRoute
   '/anlagen/neu': typeof AppAnlagenNeuRoute
+  '/auswertungen/bwa': typeof AppAuswertungenBwaRoute
+  '/auswertungen/liquiditaet': typeof AppAuswertungenLiquiditaetRoute
   '/belege/$id': typeof AppBelegeIdRoute
   '/buchungen/neu': typeof AppBuchungenNeuRoute
   '/dauerbelege/$id': typeof AppDauerbelegeIdRoute
@@ -797,6 +837,8 @@ export interface FileRoutesByFullPath {
   '/api/belege/teilen': typeof ApiBelegeTeilenRoute
   '/api/datev/$jahr': typeof ApiDatevJahrRoute
   '/api/dauerbeleg/$id': typeof ApiDauerbelegIdRoute
+  '/api/einstellungen/export': typeof ApiEinstellungenExportRoute
+  '/api/etsy/callback': typeof ApiEtsyCallbackRoute
   '/api/export/$jahr': typeof ApiExportJahrRoute
   '/api/fristen/kalender': typeof ApiFristenKalenderRoute
   '/api/hinterlegung/$jahr': typeof ApiHinterlegungJahrRoute
@@ -813,6 +855,7 @@ export interface FileRoutesByFullPath {
   '/api/standardanhang/$id': typeof ApiStandardanhangIdRoute
   '/api/sv-protokoll/$id': typeof ApiSvProtokollIdRoute
   '/api/ueberweisung/$id': typeof ApiUeberweisungIdRoute
+  '/api/ustid-bestaetigung/$id': typeof ApiUstidBestaetigungIdRoute
   '/api/ustva/$id': typeof ApiUstvaIdRoute
   '/api/v1/$': typeof ApiV1SplatRoute
   '/api/vast/$id': typeof ApiVastIdRoute
@@ -883,6 +926,7 @@ export interface FileRoutesByTo {
   '/api/kennzeichen': typeof ApiKennzeichenRoute
   '/api/logo': typeof ApiLogoRoute
   '/api/mcp': typeof ApiMcpRoute
+  '/api/metrics': typeof ApiMetricsRoute
   '/einladung/$token': typeof EinladungTokenRoute
   '/oauth/autorisieren': typeof OauthAutorisierenRoute
   '/': typeof AppIndexRoute
@@ -892,6 +936,8 @@ export interface FileRoutesByTo {
   '/angebote/neu': typeof AppAngeboteNeuRoute
   '/anlagen/$id': typeof AppAnlagenIdRoute
   '/anlagen/neu': typeof AppAnlagenNeuRoute
+  '/auswertungen/bwa': typeof AppAuswertungenBwaRoute
+  '/auswertungen/liquiditaet': typeof AppAuswertungenLiquiditaetRoute
   '/belege/$id': typeof AppBelegeIdRoute
   '/buchungen/neu': typeof AppBuchungenNeuRoute
   '/dauerbelege/$id': typeof AppDauerbelegeIdRoute
@@ -916,6 +962,8 @@ export interface FileRoutesByTo {
   '/api/belege/teilen': typeof ApiBelegeTeilenRoute
   '/api/datev/$jahr': typeof ApiDatevJahrRoute
   '/api/dauerbeleg/$id': typeof ApiDauerbelegIdRoute
+  '/api/einstellungen/export': typeof ApiEinstellungenExportRoute
+  '/api/etsy/callback': typeof ApiEtsyCallbackRoute
   '/api/export/$jahr': typeof ApiExportJahrRoute
   '/api/fristen/kalender': typeof ApiFristenKalenderRoute
   '/api/hinterlegung/$jahr': typeof ApiHinterlegungJahrRoute
@@ -932,6 +980,7 @@ export interface FileRoutesByTo {
   '/api/standardanhang/$id': typeof ApiStandardanhangIdRoute
   '/api/sv-protokoll/$id': typeof ApiSvProtokollIdRoute
   '/api/ueberweisung/$id': typeof ApiUeberweisungIdRoute
+  '/api/ustid-bestaetigung/$id': typeof ApiUstidBestaetigungIdRoute
   '/api/ustva/$id': typeof ApiUstvaIdRoute
   '/api/v1/$': typeof ApiV1SplatRoute
   '/api/vast/$id': typeof ApiVastIdRoute
@@ -1004,6 +1053,7 @@ export interface FileRoutesById {
   '/api/kennzeichen': typeof ApiKennzeichenRoute
   '/api/logo': typeof ApiLogoRoute
   '/api/mcp': typeof ApiMcpRoute
+  '/api/metrics': typeof ApiMetricsRoute
   '/einladung/$token': typeof EinladungTokenRoute
   '/oauth/autorisieren': typeof OauthAutorisierenRoute
   '/_app/': typeof AppIndexRoute
@@ -1013,6 +1063,8 @@ export interface FileRoutesById {
   '/_app/angebote/neu': typeof AppAngeboteNeuRoute
   '/_app/anlagen/$id': typeof AppAnlagenIdRoute
   '/_app/anlagen/neu': typeof AppAnlagenNeuRoute
+  '/_app/auswertungen_/bwa': typeof AppAuswertungenBwaRoute
+  '/_app/auswertungen_/liquiditaet': typeof AppAuswertungenLiquiditaetRoute
   '/_app/belege/$id': typeof AppBelegeIdRoute
   '/_app/buchungen/neu': typeof AppBuchungenNeuRoute
   '/_app/dauerbelege/$id': typeof AppDauerbelegeIdRoute
@@ -1037,6 +1089,8 @@ export interface FileRoutesById {
   '/api/belege/teilen': typeof ApiBelegeTeilenRoute
   '/api/datev/$jahr': typeof ApiDatevJahrRoute
   '/api/dauerbeleg/$id': typeof ApiDauerbelegIdRoute
+  '/api/einstellungen/export': typeof ApiEinstellungenExportRoute
+  '/api/etsy/callback': typeof ApiEtsyCallbackRoute
   '/api/export/$jahr': typeof ApiExportJahrRoute
   '/api/fristen/kalender': typeof ApiFristenKalenderRoute
   '/api/hinterlegung/$jahr': typeof ApiHinterlegungJahrRoute
@@ -1053,6 +1107,7 @@ export interface FileRoutesById {
   '/api/standardanhang/$id': typeof ApiStandardanhangIdRoute
   '/api/sv-protokoll/$id': typeof ApiSvProtokollIdRoute
   '/api/ueberweisung/$id': typeof ApiUeberweisungIdRoute
+  '/api/ustid-bestaetigung/$id': typeof ApiUstidBestaetigungIdRoute
   '/api/ustva/$id': typeof ApiUstvaIdRoute
   '/api/v1/$': typeof ApiV1SplatRoute
   '/api/vast/$id': typeof ApiVastIdRoute
@@ -1126,6 +1181,7 @@ export interface FileRouteTypes {
     | '/api/kennzeichen'
     | '/api/logo'
     | '/api/mcp'
+    | '/api/metrics'
     | '/einladung/$token'
     | '/oauth/autorisieren'
     | '/.well-known/oauth-protected-resource/$'
@@ -1134,6 +1190,8 @@ export interface FileRouteTypes {
     | '/angebote/neu'
     | '/anlagen/$id'
     | '/anlagen/neu'
+    | '/auswertungen/bwa'
+    | '/auswertungen/liquiditaet'
     | '/belege/$id'
     | '/buchungen/neu'
     | '/dauerbelege/$id'
@@ -1158,6 +1216,8 @@ export interface FileRouteTypes {
     | '/api/belege/teilen'
     | '/api/datev/$jahr'
     | '/api/dauerbeleg/$id'
+    | '/api/einstellungen/export'
+    | '/api/etsy/callback'
     | '/api/export/$jahr'
     | '/api/fristen/kalender'
     | '/api/hinterlegung/$jahr'
@@ -1174,6 +1234,7 @@ export interface FileRouteTypes {
     | '/api/standardanhang/$id'
     | '/api/sv-protokoll/$id'
     | '/api/ueberweisung/$id'
+    | '/api/ustid-bestaetigung/$id'
     | '/api/ustva/$id'
     | '/api/v1/$'
     | '/api/vast/$id'
@@ -1244,6 +1305,7 @@ export interface FileRouteTypes {
     | '/api/kennzeichen'
     | '/api/logo'
     | '/api/mcp'
+    | '/api/metrics'
     | '/einladung/$token'
     | '/oauth/autorisieren'
     | '/'
@@ -1253,6 +1315,8 @@ export interface FileRouteTypes {
     | '/angebote/neu'
     | '/anlagen/$id'
     | '/anlagen/neu'
+    | '/auswertungen/bwa'
+    | '/auswertungen/liquiditaet'
     | '/belege/$id'
     | '/buchungen/neu'
     | '/dauerbelege/$id'
@@ -1277,6 +1341,8 @@ export interface FileRouteTypes {
     | '/api/belege/teilen'
     | '/api/datev/$jahr'
     | '/api/dauerbeleg/$id'
+    | '/api/einstellungen/export'
+    | '/api/etsy/callback'
     | '/api/export/$jahr'
     | '/api/fristen/kalender'
     | '/api/hinterlegung/$jahr'
@@ -1293,6 +1359,7 @@ export interface FileRouteTypes {
     | '/api/standardanhang/$id'
     | '/api/sv-protokoll/$id'
     | '/api/ueberweisung/$id'
+    | '/api/ustid-bestaetigung/$id'
     | '/api/ustva/$id'
     | '/api/v1/$'
     | '/api/vast/$id'
@@ -1364,6 +1431,7 @@ export interface FileRouteTypes {
     | '/api/kennzeichen'
     | '/api/logo'
     | '/api/mcp'
+    | '/api/metrics'
     | '/einladung/$token'
     | '/oauth/autorisieren'
     | '/_app/'
@@ -1373,6 +1441,8 @@ export interface FileRouteTypes {
     | '/_app/angebote/neu'
     | '/_app/anlagen/$id'
     | '/_app/anlagen/neu'
+    | '/_app/auswertungen_/bwa'
+    | '/_app/auswertungen_/liquiditaet'
     | '/_app/belege/$id'
     | '/_app/buchungen/neu'
     | '/_app/dauerbelege/$id'
@@ -1397,6 +1467,8 @@ export interface FileRouteTypes {
     | '/api/belege/teilen'
     | '/api/datev/$jahr'
     | '/api/dauerbeleg/$id'
+    | '/api/einstellungen/export'
+    | '/api/etsy/callback'
     | '/api/export/$jahr'
     | '/api/fristen/kalender'
     | '/api/hinterlegung/$jahr'
@@ -1413,6 +1485,7 @@ export interface FileRouteTypes {
     | '/api/standardanhang/$id'
     | '/api/sv-protokoll/$id'
     | '/api/ueberweisung/$id'
+    | '/api/ustid-bestaetigung/$id'
     | '/api/ustva/$id'
     | '/api/v1/$'
     | '/api/vast/$id'
@@ -1469,6 +1542,7 @@ export interface RootRouteChildren {
   ApiKennzeichenRoute: typeof ApiKennzeichenRoute
   ApiLogoRoute: typeof ApiLogoRoute
   ApiMcpRoute: typeof ApiMcpRoute
+  ApiMetricsRoute: typeof ApiMetricsRoute
   EinladungTokenRoute: typeof EinladungTokenRoute
   OauthAutorisierenRoute: typeof OauthAutorisierenRoute
   ApiAltbelegIdRoute: typeof ApiAltbelegIdRoute
@@ -1482,6 +1556,8 @@ export interface RootRouteChildren {
   ApiBelegeTeilenRoute: typeof ApiBelegeTeilenRoute
   ApiDatevJahrRoute: typeof ApiDatevJahrRoute
   ApiDauerbelegIdRoute: typeof ApiDauerbelegIdRoute
+  ApiEinstellungenExportRoute: typeof ApiEinstellungenExportRoute
+  ApiEtsyCallbackRoute: typeof ApiEtsyCallbackRoute
   ApiExportJahrRoute: typeof ApiExportJahrRoute
   ApiFristenKalenderRoute: typeof ApiFristenKalenderRoute
   ApiHinterlegungJahrRoute: typeof ApiHinterlegungJahrRoute
@@ -1498,6 +1574,7 @@ export interface RootRouteChildren {
   ApiStandardanhangIdRoute: typeof ApiStandardanhangIdRoute
   ApiSvProtokollIdRoute: typeof ApiSvProtokollIdRoute
   ApiUeberweisungIdRoute: typeof ApiUeberweisungIdRoute
+  ApiUstidBestaetigungIdRoute: typeof ApiUstidBestaetigungIdRoute
   ApiUstvaIdRoute: typeof ApiUstvaIdRoute
   ApiV1SplatRoute: typeof ApiV1SplatRoute
   ApiVastIdRoute: typeof ApiVastIdRoute
@@ -1712,6 +1789,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiMcpRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/metrics': {
+      id: '/api/metrics'
+      path: '/api/metrics'
+      fullPath: '/api/metrics'
+      preLoaderRoute: typeof ApiMetricsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/einladung/$token': {
       id: '/einladung/$token'
       path: '/einladung/$token'
@@ -1801,6 +1885,20 @@ declare module '@tanstack/react-router' {
       path: '/artikel'
       fullPath: '/artikel/'
       preLoaderRoute: typeof AppArtikelIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/auswertungen_/bwa': {
+      id: '/_app/auswertungen_/bwa'
+      path: '/auswertungen/bwa'
+      fullPath: '/auswertungen/bwa'
+      preLoaderRoute: typeof AppAuswertungenBwaRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/auswertungen_/liquiditaet': {
+      id: '/_app/auswertungen_/liquiditaet'
+      path: '/auswertungen/liquiditaet'
+      fullPath: '/auswertungen/liquiditaet'
+      preLoaderRoute: typeof AppAuswertungenLiquiditaetRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/belege/': {
@@ -2041,6 +2139,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiDauerbelegIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/einstellungen/export': {
+      id: '/api/einstellungen/export'
+      path: '/api/einstellungen/export'
+      fullPath: '/api/einstellungen/export'
+      preLoaderRoute: typeof ApiEinstellungenExportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/etsy/callback': {
+      id: '/api/etsy/callback'
+      path: '/api/etsy/callback'
+      fullPath: '/api/etsy/callback'
+      preLoaderRoute: typeof ApiEtsyCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/export/$jahr': {
       id: '/api/export/$jahr'
       path: '/api/export/$jahr'
@@ -2151,6 +2263,13 @@ declare module '@tanstack/react-router' {
       path: '/api/ueberweisung/$id'
       fullPath: '/api/ueberweisung/$id'
       preLoaderRoute: typeof ApiUeberweisungIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/ustid-bestaetigung/$id': {
+      id: '/api/ustid-bestaetigung/$id'
+      path: '/api/ustid-bestaetigung/$id'
+      fullPath: '/api/ustid-bestaetigung/$id'
+      preLoaderRoute: typeof ApiUstidBestaetigungIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/ustva/$id': {
@@ -2368,6 +2487,8 @@ interface AppRouteChildren {
   AppAngeboteNeuRoute: typeof AppAngeboteNeuRoute
   AppAnlagenIdRoute: typeof AppAnlagenIdRoute
   AppAnlagenNeuRoute: typeof AppAnlagenNeuRoute
+  AppAuswertungenBwaRoute: typeof AppAuswertungenBwaRoute
+  AppAuswertungenLiquiditaetRoute: typeof AppAuswertungenLiquiditaetRoute
   AppBelegeIdRoute: typeof AppBelegeIdRoute
   AppBuchungenNeuRoute: typeof AppBuchungenNeuRoute
   AppDauerbelegeIdRoute: typeof AppDauerbelegeIdRoute
@@ -2434,6 +2555,8 @@ const AppRouteChildren: AppRouteChildren = {
   AppAngeboteNeuRoute: AppAngeboteNeuRoute,
   AppAnlagenIdRoute: AppAnlagenIdRoute,
   AppAnlagenNeuRoute: AppAnlagenNeuRoute,
+  AppAuswertungenBwaRoute: AppAuswertungenBwaRoute,
+  AppAuswertungenLiquiditaetRoute: AppAuswertungenLiquiditaetRoute,
   AppBelegeIdRoute: AppBelegeIdRoute,
   AppBuchungenNeuRoute: AppBuchungenNeuRoute,
   AppDauerbelegeIdRoute: AppDauerbelegeIdRoute,
@@ -2509,6 +2632,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiKennzeichenRoute: ApiKennzeichenRoute,
   ApiLogoRoute: ApiLogoRoute,
   ApiMcpRoute: ApiMcpRoute,
+  ApiMetricsRoute: ApiMetricsRoute,
   EinladungTokenRoute: EinladungTokenRoute,
   OauthAutorisierenRoute: OauthAutorisierenRoute,
   ApiAltbelegIdRoute: ApiAltbelegIdRoute,
@@ -2522,6 +2646,8 @@ const rootRouteChildren: RootRouteChildren = {
   ApiBelegeTeilenRoute: ApiBelegeTeilenRoute,
   ApiDatevJahrRoute: ApiDatevJahrRoute,
   ApiDauerbelegIdRoute: ApiDauerbelegIdRoute,
+  ApiEinstellungenExportRoute: ApiEinstellungenExportRoute,
+  ApiEtsyCallbackRoute: ApiEtsyCallbackRoute,
   ApiExportJahrRoute: ApiExportJahrRoute,
   ApiFristenKalenderRoute: ApiFristenKalenderRoute,
   ApiHinterlegungJahrRoute: ApiHinterlegungJahrRoute,
@@ -2538,6 +2664,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiStandardanhangIdRoute: ApiStandardanhangIdRoute,
   ApiSvProtokollIdRoute: ApiSvProtokollIdRoute,
   ApiUeberweisungIdRoute: ApiUeberweisungIdRoute,
+  ApiUstidBestaetigungIdRoute: ApiUstidBestaetigungIdRoute,
   ApiUstvaIdRoute: ApiUstvaIdRoute,
   ApiV1SplatRoute: ApiV1SplatRoute,
   ApiVastIdRoute: ApiVastIdRoute,

@@ -8,7 +8,9 @@
 export {
   applyPublishedRates,
   bookDocument,
+  bookingIssueList,
   bookingIssues,
+  type BookingIssue,
   deleteDocument,
   DocumentError,
   documentFileProblem,
@@ -21,6 +23,8 @@ export {
   updateDocument,
   uploadDocument,
 } from "./documents.ts";
+export { duplicateDocument } from "./duplizieren.ts";
+export { belegeMitGleicherNummer, type GleicheNummer } from "./gleiche-nummer.ts";
 export { searchBelege, searchDocuments, type DocumentHit, type RecurringDocumentHit } from "./search.ts";
 export { type Lieferant, supplierCategory, supplierPayment } from "./vorschlaege.ts";
 export {
@@ -37,6 +41,7 @@ export { supplierSuggestion, type SupplierSuggestion } from "./lieferantenvorsch
 export { loadSplits, splitsByDocument, type DocumentSplit } from "./splits.ts";
 export { belegZeilen } from "./belegbuchung.ts";
 export { supplierDocuments } from "./lieferant-belege.ts";
+export { pdfPageTexts } from "./pdf-seitentext.ts";
 export { documentReferenceSchema, type DocumentReference } from "./external-reference.ts";
 export { documentNavigation, type DocumentNavigation } from "./navigation.ts";
 export {

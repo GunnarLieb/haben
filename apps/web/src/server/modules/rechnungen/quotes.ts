@@ -39,13 +39,17 @@ import { buildQuotePdf, texts, type QuoteDocument, type QuoteDocumentLine } from
 import { and, asc, desc, eq, or, sql } from "drizzle-orm";
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import { ansprechpartnerSnapshot, contactPersonProblem, contactRoleProblem, loadCompany, sellerIssues } from "../stammdaten/index.ts";
+import { ansprechpartnerSnapshot, contactPersonProblem, contactRoleProblem, loadCompany, sellerIssues, standardTexte } from "../stammdaten/index.ts";
 import { withActor } from "../../db/actor.ts";
 import { db, schema, type Db, type Tx } from "../../db/index.ts";
 import { loadLetterhead, withCustomLayout } from "../stammdaten/index.ts";
-import { circleFor, documentNumber, peekNumber, takeNumber } from "./number-counter.ts";
+import { assertNumberingCurrent, circleContact, circleFor, customerNumberConflict, documentNumber, peekNumber, takeNumber } from "./number-counter.ts";
 import { quoteDraftLineSchema } from "./draft-line.ts";
-import { buyerFrom, effectivePriceMode, insertDraft, invoiceDiscountOf, lineDiscountOf, openAbschlaege, sellerFrom, type Invoice } from "./invoices.ts";
+import { openAbschlaege } from "./advance-deductions.ts";
+import { effectivePriceMode } from "./draft-schema.ts";
+import { buyerFrom, buyerIssues, invoiceDiscountOf, lineDiscountOf, sellerFrom } from "./invoice-document.ts";
+import { insertDraft } from "./invoice-drafts.ts";
+import type { Invoice } from "./invoices.ts";
 import { removeFiles, unusedFiles } from "./attachment-store.ts";
 import { attachStoredToQuote, copyQuoteAttachments, quoteAttachmentFiles } from "./quote-attachments.ts";
 import { listQuoteDefaultAttachments } from "./quote-default-attachments.ts";
@@ -53,6 +57,7 @@ import { quoteChoices, storeQuoteChoices } from "./quote-choices.ts";
 import { documentReferences, referenceColumns, referenceFieldsSchema, referencesFromQuote } from "./order-references.ts";
 import { defaultSkonto } from "./skonto.ts";
 import { outgoingTaxColumns, outgoingTaxDetailsSchema } from "./tax-details.ts";
+import { angebotMitPlatzhaltern, mitVorlage, textMitVorlage } from "./beleg-platzhalter.ts";
 
 /**
  * Angebote: eigener Nummernkreis (AN-2026-001), PDF mit der Rechnungsvorlage, keine Buchung.
@@ -129,7 +134,7 @@ export type { QuoteListStatus };
 /** Positionen einer Abschlagsrechnung aus einer Zeile des Zahlungsplans, mit der Zeile (quote-plan.ts) */
 export interface AbschlagPlanLines {
   row: number;
-  lines: { description: string; quantity: number; unit: UnitLabel; unitPrice: number; taxRate: 1900 | 700 | 0 }[];
+  lines: { description: string; quantity: number; unit: UnitLabel; unitPrice: number; taxRate: 1900 | 700 | 0; arbeitskosten?: boolean }[];
 }
 
 /** Berechnet die Positionen in der Transaktion, die das Angebot gesperrt hat, nach der Auswahl des Kunden */
@@ -166,6 +171,7 @@ function lineRows(quoteId: string, input: QuoteDraftInput) {
     net: lineNets[index]!,
     ...discountColumns(line.discount),
     kind: line.kind ?? null,
+    arbeitskosten: line.arbeitskosten ?? false,
   }));
 }
 
@@ -261,15 +267,16 @@ export async function deleteQuoteDraft(actor: string, id: string): Promise<void>
 
 /** Neues Angebot mit den Vorgaben aus den Firmendaten */
 export async function newQuoteDefaults(today: string) {
-  const company = await loadCompany();
+  // Standard-Textbausteine für Angebote (#1494): Kopftext als Einleitung, Fußtext als Hinweis
+  const [company, standard] = await Promise.all([loadCompany(), standardTexte("angebot")]);
   return {
     contactId: null,
     issueDate: today,
     validUntil: addDays(today, QUOTE_VALID_DAYS),
     serviceFrom: null,
     serviceTo: null,
-    intro: company.quoteIntro,
-    note: "",
+    intro: standard.kopf,
+    note: standard.fuss,
     taxTreatment: (company.kleinunternehmer ? "kleinunternehmer" : "regulaer") as TaxTreatment,
     exemptionReason: "",
     priceMode: "netto" as PriceMode,
@@ -334,12 +341,14 @@ export function quoteStatus(quote: Pick<Quote, "status" | "decision" | "invoiceI
   return coreQuoteStatus(quote, today);
 }
 
-export async function listQuotes(today: string) {
+/** Angebotsliste; mit id nur dieses eine Angebot (REST-API), wie listInvoices */
+export async function listQuotes(today: string, id?: string) {
   const rows = await db
     .select({
       id: schema.quotes.id,
       status: schema.quotes.status,
       number: schema.quotes.number,
+      contactId: schema.quotes.contactId,
       issueDate: schema.quotes.issueDate,
       validUntil: schema.quotes.validUntil,
       net: schema.quotes.net,
@@ -352,6 +361,7 @@ export async function listQuotes(today: string) {
     })
     .from(schema.quotes)
     .leftJoin(schema.contacts, eq(schema.contacts.id, schema.quotes.contactId))
+    .where(id ? eq(schema.quotes.id, id) : undefined)
     .orderBy(sql`${schema.quotes.number} desc nulls first`, desc(schema.quotes.createdAt));
   return rows.map((row) => ({ ...row, customer: row.buyerName ?? row.contactName ?? "–", listStatus: quoteStatus(row, today) }));
 }
@@ -415,6 +425,7 @@ export function quoteDocumentFor(
         net: calc.lineNets[i]!,
         ...lineDiscountOf(line),
         ...(line.kind ? { kind: line.kind } : {}),
+        ...(line.arbeitskosten ? { arbeitskosten: true } : {}),
         ...(line.kind === "alternative" ? { alternativeTo: alternativeMain(lines, line.position) ?? 0 } : {}),
       }),
     ),
@@ -445,11 +456,13 @@ export async function quoteIssues(id: string): Promise<string[]> {
       sellerUstId: company.ustId,
       buyerUstId: contact?.ustId,
       buyerCountry: contact?.land,
+      buyerPostalCode: contact?.plz,
+      foreignPlace: quote.taxDetails?.foreignPlace,
       exemptionReason: quote.exemptionReason,
     }),
   );
   if (quote.taxTreatment === "steuerfrei" && !quote.exemptionReason) issues.push("Befreiungsvorschrift fehlt");
-  if (!contact) issues.push("Kunde fehlt");
+  issues.push(...buyerIssues(company.quoteNumberFormat, contact));
   if (lines.length === 0) issues.push("Keine Positionen");
   if (lines.some((line) => lineAmount(line.quantity, line.unitPrice) === 0)) issues.push("Position ohne Betrag");
   if (quote.gross <= 0) issues.push("Angebotssumme muss positiv sein");
@@ -471,16 +484,27 @@ export async function finalizeQuote(actor: string, id: string): Promise<Quote> {
     const company = await loadCompany(tx);
     const lines = await tx.select().from(schema.quoteLines).where(eq(schema.quoteLines.quoteId, id)).orderBy(asc(schema.quoteLines.position));
     const [contact] = await tx.select().from(schema.contacts).where(eq(schema.contacts.id, quote.contactId!));
-    // Wie bei Rechnungen: Nummer lesen, PDF erzeugen, erst dann schreiben (number-counter.ts)
-    const circle = await circleFor(tx, "angebot", quote.issueDate);
-    const counter = await peekNumber(tx, "angebot", circle);
-    const number = await documentNumber(tx, "angebot", company.quoteNumberFormat, quote.issueDate, counter);
     const seller = sellerFrom(company);
     const buyer = buyerFrom(contact!, await ansprechpartnerSnapshot(tx, quote.contactPersonId));
-    const doc = quoteDocumentFor(quote, lines, seller, buyer, number);
+    // Wie bei Rechnungen: Nummer lesen, PDF erzeugen, erst dann schreiben (number-counter.ts); {KUNDENNR} wird zur
+    // Kundennummer des Käufers, der Kreis beim Zähler je Kunde der des Kunden (#1426)
+    const circle = await circleFor(tx, "angebot", quote.issueDate);
+    const numberContactId = circleContact(company.quoteCounterPerCustomer, quote.contactId!);
+    if (numberContactId !== null) {
+      const conflict = await customerNumberConflict(tx, contact!);
+      if (conflict) {
+        throw new QuoteError(`Die Kundennummer ${contact!.kundennummer} hat auch „${conflict}“; mit Zähler je Kunde muss sie eindeutig sein.`);
+      }
+    }
+    const counter = await peekNumber(tx, "angebot", circle, numberContactId);
+    const number = await documentNumber(tx, "angebot", company.quoteNumberFormat, quote.issueDate, counter, buyer.kundennummer);
+    // Platzhalter in Einleitung und Hinweis (#1334) auflösen; so stehen sie auch im Angebot
+    const doc = angebotMitPlatzhaltern(quoteDocumentFor(quote, lines, seller, buyer, number));
     const pdf = await withCustomLayout("angebot", await loadLetterhead(), (letterhead) => buildQuotePdf({ ...doc, ...letterhead }));
     const now = new Date();
-    await takeNumber(tx, "angebot", circle, counter);
+    await takeNumber(tx, "angebot", circle, counter, numberContactId);
+    const used = { format: company.quoteNumberFormat, date: quote.issueDate, year: circle, contactId: numberContactId };
+    await assertNumberingCurrent(tx, "angebot", used, quote.contactId!);
     const [finalized] = await tx
       .update(schema.quotes)
       .set({
@@ -488,12 +512,14 @@ export async function finalizeQuote(actor: string, id: string): Promise<Quote> {
         number,
         numberYear: circle,
         numberCounter: counter,
+        numberContactId,
         contactVersion: contact!.version,
         seller,
         buyer,
         net: doc.totals.net,
         tax: doc.totals.tax,
         gross: doc.totals.gross,
+        ...textMitVorlage(quote, doc),
         pdf: Buffer.from(pdf),
         pdfSha256: sha256(pdf),
         lockedAt: now,
@@ -590,7 +616,7 @@ export async function quoteToInvoice(
         paymentTermDays: company.paymentTermDays,
         skonto: defaultSkonto(company, contact, company.paymentTermDays),
         format: contact?.defaultFormat ?? (contact?.leitwegId ? "xrechnung-cii" : company.defaultFormat),
-        intro: locked.intro,
+        intro: mitVorlage(locked).intro,
         note: texts(locked.language).fromQuote(locked.number ?? "", texts(locked.language).date(locked.issueDate)),
         ...referencesFromQuote(locked),
         taxTreatment: locked.taxTreatment,
@@ -615,6 +641,7 @@ export async function quoteToInvoice(
                 unitPrice: line.unitPrice,
                 taxRate: line.taxRate as 1900 | 700 | 0,
                 ...lineDiscountOf(line),
+                arbeitskosten: line.arbeitskosten,
               })),
       },
       planned ? { paymentPlanRow: planned.row } : {},
@@ -643,8 +670,8 @@ export async function copyQuote(actor: string, id: string, today: string): Promi
     validUntil: addDays(today, validDays || QUOTE_VALID_DAYS),
     serviceFrom: null,
     serviceTo: null,
-    intro: quote.intro,
-    note: quote.note,
+    // Mit Platzhaltern, wie im Entwurf des Originals, nicht mit dessen Werten (#1334)
+    ...mitVorlage(quote),
     ...referenceColumns(quote),
     taxTreatment: quote.taxTreatment,
     exemptionReason: quote.exemptionReason,
@@ -664,6 +691,7 @@ export async function copyQuote(actor: string, id: string, today: string): Promi
       taxRate: line.taxRate as 1900 | 700 | 0,
       kind: line.kind,
       ...lineDiscountOf(line),
+      arbeitskosten: line.arbeitskosten,
     })),
   };
   const parsed = quoteDraftSchema.parse(input);

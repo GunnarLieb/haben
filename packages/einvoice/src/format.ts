@@ -49,7 +49,7 @@ export function invoiceSkonto(doc: PaymentFields): SkontoFrist[] {
 
 /** Zahlungssatz unter der Summe, mit Skonto je Stufe; das XML bleibt wie BT-20 und BT-120 deutsch (siehe i18n.ts) */
 export function paymentSentence(doc: PaymentFields, t: Texts = TEXTS.de): string {
-  // Auch ein positives Korrekturstorno bestätigt nur die Stornierung (https://github.com/firsttris/haben/pull/821#issuecomment-6849630322).
+  // Auch ein positives Korrekturstorno bestätigt nur die Stornierung (https://github.com/Speicherstadt/haben/pull/821#issuecomment-6849630322).
   if (doc.kind === "storno") return t.cancellation;
   // Eine Rechnungskorrektur belegt eine Minderung, noch keine Auszahlung (Verrechnung: #274).
   if (doc.totals.gross < 0 && doc.kind === "korrektur") return t.correction;
@@ -90,8 +90,20 @@ export function presentReferences(references: OrderReferences | undefined): Orde
   return present;
 }
 
-/** Zeilen für den Kopfblock im PDF: „Ihre Bestellung 4500012345“ usw., in der Reihenfolge Bestellung, Auftrag, Lieferschein */
-export function referenceMeta(references: OrderReferences | undefined, t: Pick<Texts, "orderReferences">): { label: string; value: string }[] {
+/** Zeile im Infoblock; group „referenz“ bei weiteren Referenzen, die ein Layout gesondert setzen kann; ohne Gruppe setzt templateInputs „kerndaten“ (meta[].group im Feldvertrag) */
+export interface MetaZeile {
+  label: string;
+  value: string;
+  group?: "referenz";
+}
+
+/**
+ * Zeilen für den Kopfblock im PDF: „Ihre Bestellung 4500012345“ usw., in der Reihenfolge Bestellung, Auftrag, Lieferschein.
+ * Die Bestellung des Kunden zählt zu den Kerndaten (oft verlangt); Auftrag und Lieferschein sind weitere Referenzen.
+ */
+export function referenceMeta(references: OrderReferences | undefined, t: Pick<Texts, "orderReferences">): MetaZeile[] {
   const present = presentReferences(references);
-  return REFERENCE_KEYS.flatMap((key) => (present[key] ? [{ label: t.orderReferences[key], value: present[key] }] : []));
+  return REFERENCE_KEYS.flatMap((key) =>
+    present[key] ? [{ label: t.orderReferences[key], value: present[key], ...(key === "buyerOrder" ? {} : { group: "referenz" as const }) }] : [],
+  );
 }

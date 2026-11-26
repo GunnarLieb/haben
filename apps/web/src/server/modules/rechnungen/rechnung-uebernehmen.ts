@@ -1,10 +1,13 @@
-import type { TaxTreatment } from "@haben/core";
+import type { OutgoingTaxDetails, TaxTreatment } from "@haben/core";
 import { eq } from "drizzle-orm";
 import { schema, type Tx } from "../../db/index.ts";
 import type { Company, Contact } from "../stammdaten/index.ts";
 import { InvoiceError } from "./invoice-error.ts";
+import { exemptRule } from "./invoice-tax.ts";
 import { storeInvoiceTaxes } from "./invoice-taxes.ts";
-import { buyerFrom, type Invoice, sellerFrom, sha256 } from "./invoices.ts";
+import { buyerFrom, sellerFrom } from "./invoice-document.ts";
+import { sha256 } from "./invoice-finalize.ts";
+import type { Invoice } from "./invoices.ts";
 import type { RebuiltInvoice } from "./positionen-nachbilden.ts";
 
 /** Eine Rechnung, die woanders geschrieben wurde und in Haben festgeschrieben vorliegen soll (Fremdsystem, Umzug) */
@@ -22,6 +25,8 @@ export interface TakenOverInvoice extends RebuiltInvoice {
   serviceDate?: string | null;
   taxTreatment: TaxTreatment;
   exemptionReason?: string;
+  /** Befreiungsvorschrift und tatsächlicher Leistungsort; ohne Angabe ungeklärt */
+  taxDetails?: OutgoingTaxDetails | null;
   note: string;
   /** Das Original: wird nicht neu erzeugt */
   pdf: Uint8Array;
@@ -59,6 +64,7 @@ export async function createTakenOverInvoice(
       priceMode: p.priceMode,
       taxTreatment: p.taxTreatment,
       exemptionReason: p.exemptionReason ?? "",
+      taxDetails: p.taxDetails ?? null,
       net: p.totals.net,
       tax: p.totals.tax,
       gross: p.totals.gross,
@@ -82,6 +88,12 @@ export async function createTakenOverInvoice(
       pdfSha256: p.pdfSha256,
       xml: p.xml,
       xmlSha256: p.xml ? sha256(p.xml) : null,
+      // Fremdrechnungen zählen wie eigene nach der Leistung; aus Lexoffice übernommene meldet die Voranmeldung nicht (#1312)
+      exemptRule: exemptRule({
+        kind: "rechnung",
+        taxTreatment: p.taxTreatment,
+        lexofficeVoucherId: "lexofficeVoucherId" in p.origin ? p.origin.lexofficeVoucherId : null,
+      }),
       lockedAt: now,
       updatedAt: now,
     })

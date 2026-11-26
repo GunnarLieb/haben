@@ -51,10 +51,10 @@ const WCAG = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa", "best-prac
 
 /**
  * Die eine Seite, mit der ein Durchlauf nacheinander arbeitet, und die Fehler, die der Browser dabei meldet. Ein eigener
- * Kontext statt browser.newPage(), sonst lehnt axe die Seite ab.
+ * Kontext statt browser.newPage(), sonst lehnt axe die Seite ab. `storageState`: die Sitzung aus einem Abzug (e2e/abzug.ts).
  */
-export async function durchlaufSeite(browser: Browser): Promise<{ page: Page; pageErrors: string[] }> {
-  const context = await browser.newContext();
+export async function durchlaufSeite(browser: Browser, storageState?: string): Promise<{ page: Page; pageErrors: string[] }> {
+  const context = await browser.newContext(storageState ? { storageState } : {});
   await vorschauAnheften(context);
   const page = await context.newPage();
   const pageErrors: string[] = [];
@@ -142,23 +142,56 @@ export async function neuenKontaktOeffnen(page: Page): Promise<void> {
   await trefferliste(page).getByRole("option", { name: "Neuen Kontakt anlegen" }).click();
 }
 
-/** Lieferanten am Beleg oder im Dauerbeleg über die Suche „Aus den Kontakten“ wählen; name wie in der Liste, auch „Name · USt-IdNr.“ */
+/** Das Feld für den Lieferanten: am Beleg das eine Feld „Lieferant“, im Dauerbeleg die Suche „Aus den Kontakten“ */
+const lieferantFeld = (page: Page) => page.getByRole("combobox", { name: /^(Lieferant|Aus den Kontakten)$/ });
+
+/** Lieferanten am Beleg oder im Dauerbeleg über die Suche wählen; name wie in der Liste, auch „Name · USt-IdNr.“ */
 export async function lieferantWaehlen(page: Page, name: string): Promise<void> {
-  const feld = page.getByRole("combobox", { name: "Aus den Kontakten" });
+  const feld = lieferantFeld(page);
   const gesucht = name.split(" · ")[0]!;
   await feld.fill(gesucht);
   await trefferliste(page).getByRole("option").filter({ hasText: gesucht }).first().click();
   await expect(feld).toHaveValue(new RegExp(`^${gesucht.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
 }
 
-/** Dialog für einen neuen Lieferanten über den letzten Eintrag der Trefferliste öffnen; mit text als getipptem Namen */
+/**
+ * Dialog für einen neuen Lieferanten über den letzten Eintrag der Trefferliste öffnen; mit text als getipptem Namen. Ohne
+ * text bleibt stehen, was im Feld steht: am Beleg der Name („„Name“ als neuen Lieferanten anlegen“), sonst „Neuen Lieferanten anlegen“.
+ */
 export async function neuenLieferantenOeffnen(page: Page, text?: string): Promise<void> {
-  const feld = page.getByRole("combobox", { name: "Aus den Kontakten" });
+  const feld = lieferantFeld(page);
   if (text === undefined) await feld.click();
   else await feld.fill(text);
   await trefferliste(page)
-    .getByRole("option", { name: text === undefined ? "Neuen Lieferanten anlegen" : `„${text}“ als neuen Lieferanten anlegen` })
+    .getByRole("option", { name: text === undefined ? /neuen Lieferanten anlegen/i : `„${text}“ als neuen Lieferanten anlegen` })
     .click();
+}
+
+/** Klappt „Weitere Angaben“ am Beleg (USt-IdNr., Fällig am, Leistung, Währung, Notiz) oder am Kontakt (DATEV-Konten, Skonto, …) auf, wenn sie zu sind */
+export async function weitereAngabenOeffnen(page: Page): Promise<void> {
+  const bereich = page.locator("details.weitere-angaben");
+  if (await bereich.evaluate((el) => (el as HTMLDetailsElement).open)) return;
+  await bereich.locator("summary").click();
+  await expect(bereich).toHaveJSProperty("open", true);
+}
+
+/** Klappt „Fristen und Zeitraum ändern“ auf der Voranmeldung (Voranmeldungszeitraum, Dauerfristverlängerung) auf, wenn sie zu sind */
+export async function fristenOeffnen(page: Page): Promise<void> {
+  // Erst nach der Hydration klicken, sonst klappt React den Bereich danach wieder zu
+  await page.waitForLoadState("networkidle");
+  const bereich = page.locator('section[aria-labelledby="ust-fristen"] > details');
+  if (await bereich.evaluate((el) => (el as HTMLDetailsElement).open)) return;
+  await bereich.locator("summary").click();
+  await expect(bereich).toHaveJSProperty("open", true);
+}
+
+/** Über die Schnellsuche (Strg+K) zum Treffer, ohne Neuladen: der Wechsel zwischen zwei Einträgen derselben Art, ohne dass der Browser die Seite neu lädt */
+export async function ueberSchnellsuche(page: Page, suche: string, treffer: RegExp): Promise<void> {
+  await page.keyboard.press("Control+k");
+  const palette = page.getByRole("dialog", { name: "Befehlspalette" });
+  await palette.getByRole("combobox").fill(suche);
+  await palette.getByRole("option", { name: treffer }).click();
+  await expect(palette).toBeHidden();
 }
 
 /** Artikel aus der Trefferliste einer Position übernehmen */

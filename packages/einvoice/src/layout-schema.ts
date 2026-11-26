@@ -37,12 +37,24 @@ const common = {
   reference: text("Bezugszeile unter der Überschrift, etwa auf die stornierte Rechnung").nullable(),
   senderLine: text("Kleine Absenderzeile über dem Anschriftfeld"),
   recipient: z.array(z.string()).describe("Anschrift des Empfängers, eine Zeile je Eintrag"),
-  meta: z.array(row).describe("Angaben rechts neben der Anschrift: Nummer, Datum, Leistungsdatum, Kundennummer, Referenzen"),
+  meta: z
+    .array(
+      row.extend({
+        group: z
+          .enum(["kerndaten", "referenz"])
+          .describe(
+            "„kerndaten“ bei den Kerndaten (Nummer, Datum, Leistungsdatum, Kundennummer, Bestellung des Kunden …), „referenz“ bei weiteren Referenzen (unser Auftrag, Lieferschein, Leitweg-ID …), die ein Layout gesondert setzen kann",
+          ),
+      }),
+    )
+    .describe("Angaben rechts neben der Anschrift: Nummer, Datum, Leistungsdatum, Kundennummer, Referenzen"),
   payment: text("Satz zur Zahlung, etwa Fälligkeit, Skonto oder Lastschrift").nullable(),
   qr: text("GiroCode als SVG; null oder fehlt, wenn keiner gedruckt wird").nullable().optional(),
   footer: z.array(z.array(z.string())).describe("Spalten der Fußzeile, je Spalte die Zeilen als Text"),
   footerFormatted: z.array(z.array(runs)).nullable().describe("Eigene Fußzeile mit Auszeichnungen, je Spalte und Zeile; null bei der automatischen Fußzeile"),
-  legal: text("Pflichtangaben einer GmbH oder UG (§ 35a GmbHG) in einer Zeile; null ohne").nullable(),
+  legal: text(
+    "Pflichtangaben einer GmbH oder UG (§ 35a GmbHG) in einer Zeile, Angaben getrennt durch „ · “; null ohne und wenn sie über ihre Platzhalter schon in der eigenen Fußzeile (footer) stehen",
+  ).nullable(),
   // Aus dem Briefkopf (templateInputs)
   accent: text("Akzentfarbe #RRGGBB"),
   palette: z
@@ -52,9 +64,20 @@ const common = {
     .strictObject({
       logoHeight: z.number().describe("Größte Höhe des Logos in mm"),
       logoWidth: z.number().describe("Größte Breite des Logos in mm"),
-      logoLeft: flag("Logo links statt rechts"),
+      logoLeft: flag("Logo links; false bei „rechts“ und „mitte“, look.logoPosition nennt alle drei"),
+      logoPosition: z.enum(["links", "mitte", "rechts"]).describe("Stelle des Logos im Briefkopf"),
       foldMarks: flag("Falz- und Lochmarken drucken"),
       backgroundPages: z.enum(["erste", "alle"]).describe("Briefpapier nur auf der ersten oder auf allen Seiten"),
+      legalPosition: z
+        .enum(["layout", "spalte", "zeile"])
+        .optional()
+        .describe(
+          "Stelle von legal im Fuß: „spalte“ als eigene Spalte neben footer, je Angabe eine Zeile; „zeile“ als Zeile unter den Spalten; „layout“, wie es das Layout vorsieht. Eingebaute Layouts bekommen die Stelle aufgelöst, außer mit Randspalte (Elegant, Atelier): Die setzt legal immer selbst und bekommt die Wahl, wie sie ist",
+        ),
+      options: z
+        .record(z.string(), z.string())
+        .optional()
+        .describe("Optionen eines eingebauten Layouts, schon aufgelöst, etwa { fuss: „rechts“ }; leer bei eigenen Layouts"),
     })
     .describe("Einstellungen der Gestaltung"),
   font: z
@@ -122,7 +145,7 @@ export const belegDatenSchema = z
     lines: z.array(line).describe("Positionen"),
     totals: totalsBlock.nullable().describe("Summenblock; null auf dem Lieferschein"),
     taxNote: text(
-      "Feste Pflichthinweise unter den Summen: ohne Steuerausweis (etwa Kleinunternehmer, Reverse Charge) und zur Aufbewahrung privater Grundstücksleistungen; null ohne",
+      "Feste Hinweise unter den Summen: ohne Steuerausweis (etwa Kleinunternehmer, Reverse Charge), zur Aufbewahrung privater Grundstücksleistungen und zum Anteil der Arbeits-, Maschinen- und Fahrtkosten (§ 35a EStG); null ohne",
     ).nullable(),
     intro: text("Einleitung über den Positionen ohne Auszeichnungszeichen; null ohne, fehlt auf dem Lieferschein").nullable().optional(),
     introFormatted: runs.nullable().optional().describe("Einleitung mit Auszeichnungen; null ohne, fehlt auf dem Lieferschein"),
@@ -279,13 +302,16 @@ export const LAYOUT_GESTALTUNG = {
   font: { label: "Schrift", felder: "font", belege: ALLE_BELEGE },
   logo: { label: "Logo", felder: "logo", belege: ALLE_BELEGE },
   logoSize: { label: "Größe des Logos", felder: "look.logoHeight|look.logoWidth", belege: ALLE_BELEGE },
-  logoPosition: { label: "Seite des Logos", felder: "look.logoLeft", belege: ALLE_BELEGE },
+  logoPosition: { label: "Stelle des Logos", felder: "look.logoLeft|look.logoPosition", belege: ALLE_BELEGE },
+  // Kennt ein Layout nur look.logoLeft, setzt es „mitte“ rechts; Hinweis nur, wenn es die Stelle überhaupt liest
+  logoMitte: { label: "Stelle des Logos „Mitte“", felder: "look.logoPosition", belege: ALLE_BELEGE },
   foldMarks: { label: "Falz- und Lochmarken", felder: "look.foldMarks", belege: ALLE_BELEGE },
   giroCode: { label: "GiroCode", felder: "qr", belege: ["rechnung", "mahnung"] },
   itemNumber: { label: "Artikelnummer", felder: "itemNumbers", belege: ["rechnung", "angebot", "auftragsbestaetigung", "lieferschein"] },
   vatColumn: { label: "Spalte USt je Position", felder: "hideVatColumn", belege: ["rechnung", "angebot", "auftragsbestaetigung"] },
   background: { label: "Briefpapier", felder: "background", belege: ALLE_BELEGE },
   backgroundPages: { label: "Seiten mit Briefpapier", felder: "look.backgroundPages", belege: ALLE_BELEGE },
+  legalPosition: { label: "Registerangaben", felder: "look.legalPosition", belege: ALLE_BELEGE },
 } as const satisfies Record<string, { label: string; felder: string; belege: readonly LayoutDocumentType[] }>;
 
 export type LayoutGestaltung = keyof typeof LAYOUT_GESTALTUNG;

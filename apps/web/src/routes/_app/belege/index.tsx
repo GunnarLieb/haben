@@ -1,4 +1,4 @@
-import { EXPENSE_CATEGORIES, formatEuro, type ExpenseCategory } from "@haben/core";
+import { formatEuro, kategorieMitKonto, type Kontenrahmen } from "@haben/core";
 import { ErrorBanner } from "../../../components/ErrorBanner.tsx";
 import { Link, createFileRoute, useRouter } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
@@ -10,6 +10,7 @@ import { BelegFilterChips, BelegeLeer, filterBelege, filterName, sucheBelege } f
 import { Field } from "../../../components/Field.tsx";
 import { formatDate, formatDateTime } from "../../../lib/format.ts";
 import { getDocuments } from "../../../server/functions/documents.ts";
+import { menueGruppe } from "../../../lib/menue-gruppe.ts";
 
 export const Route = createFileRoute("/_app/belege/")({
   validateSearch: z.object({
@@ -29,15 +30,16 @@ const richtungText = (dir: "auf" | "ab") => (dir === "ab" ? "absteigend" : "aufs
 
 /* Texte der Spalten Lieferant und Kategorie; die Sortierung nimmt dieselben, damit die Liste so sortiert ist, wie sie aussieht */
 const lieferantText = (doc: { supplierName: string; filename: string }) => doc.supplierName || doc.filename;
-const kategorieText = (doc: { category: string | null; splitCount: number }) =>
-  doc.category ? EXPENSE_CATEGORIES[doc.category as ExpenseCategory].label : doc.splitCount > 0 ? `Aufgeteilt auf ${doc.splitCount} Zeilen` : "–";
+const kategorieText = (doc: { category: string | null; splitCount: number }, kontenrahmen: Kontenrahmen) =>
+  doc.category ? kategorieMitKonto(kontenrahmen, doc.category) : doc.splitCount > 0 ? `Aufgeteilt auf ${doc.splitCount} Zeilen` : "–";
 
 const statusText = (doc: Parameters<typeof documentStatusText>[0] & { cancelledOn: string | null }) =>
   documentStatusText({ ...doc, cancelled: doc.cancelledOn !== null });
 
 function DocumentsPage() {
   const { documents, aiAvailable, inbox } = Route.useLoaderData();
-  const inhaber = Route.useRouteContext().user.role === "inhaber";
+  const { user, kontenrahmen } = Route.useRouteContext();
+  const inhaber = user.role === "inhaber";
   const router = useRouter();
   const { suche, status: filter } = Route.useSearch();
   const [query, setQuery] = useState(suche ?? "");
@@ -57,7 +59,7 @@ function DocumentsPage() {
           case "lieferant":
             return richtung * lieferantText(a).localeCompare(lieferantText(b), "de");
           case "kategorie":
-            return richtung * kategorieText(a).localeCompare(kategorieText(b), "de");
+            return richtung * kategorieText(a, kontenrahmen).localeCompare(kategorieText(b, kontenrahmen), "de");
           case "brutto":
             return richtung * (a.gross - b.gross);
           case "status":
@@ -97,7 +99,7 @@ function DocumentsPage() {
     <>
       <div className="page-head">
         <div>
-          <div className="eyebrow">Eingangsrechnungen und Quittungen</div>
+          <div className="eyebrow">{menueGruppe("/belege", inhaber)}</div>
           <h1>Belege</h1>
         </div>
         {open > 0 && (
@@ -106,6 +108,9 @@ function DocumentsPage() {
           </Status>
         )}
       </div>
+      <p className="muted small" style={{ margin: 0, maxWidth: 760 }}>
+        Hier stehen Eingangsrechnungen und Quittungen, von der Prüfung bis zur Buchung.
+      </p>
       {inhaber && <DocumentUpload aiAvailable={aiAvailable} />}
       {inbox ? (
         <p className="small muted" style={{ margin: 0, overflowWrap: "anywhere" }}>
@@ -177,7 +182,7 @@ function DocumentsPage() {
                   </span>
                 </div>
                 <div className="small">
-                  {kategorieText(doc)}
+                  {kategorieText(doc, kontenrahmen)}
                   {doc.ownAccount && <div className="muted">{doc.ownAccount}</div>}
                 </div>
                 <div className="num">{doc.gross ? formatEuro(doc.gross) : "–"}</div>

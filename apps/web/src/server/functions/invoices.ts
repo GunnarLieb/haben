@@ -1,17 +1,19 @@
-import { inCents } from "@haben/core";
+import { inCents, previousMonthKey } from "@haben/core";
 import { notFound } from "@tanstack/react-router";
 import { invoicesSentByMail, leistungsmonatHinweisFuer, listInvoiceAttachments, mailsForInvoice } from "../modules/rechnungen/index.ts";
 import { createServerFn } from "@tanstack/react-start";
-import { asc, eq, or } from "drizzle-orm";
+import { and, asc, eq, isNull, or } from "drizzle-orm";
 import { z } from "zod";
 import { invoicePaymentList, listAccounts, listWriteOffs } from "../modules/bank/index.ts";
-import { openPositions } from "../modules/auswertungen/index.ts";
+import { buchungenZu } from "../modules/buchhaltung/index.ts";
+import { kleinunternehmerStand, openPositions, umsatzImMonat } from "../modules/auswertungen/index.ts";
 import { deliverSoon, deliveryForInvoice } from "../modules/ablage/index.ts";
 import { serviceEntriesOfInvoice } from "../modules/leistungen/index.ts";
 import { editorContext } from "../modules/stammdaten/index.ts";
 import { authMiddleware, readMiddleware } from "../middleware.ts";
 import {
   cancelInvoice,
+  copyInvoice,
   createCorrection,
   createDraft,
   deleteDraft,
@@ -27,6 +29,7 @@ import {
   listInvoices,
   newDraftDefaults,
   numbering,
+  contactNumbering,
   abschlagLinks,
   openAbschlaege,
   invoiceSettlementReversalSchema,
@@ -66,9 +69,16 @@ export const getInvoiceSummary = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async () => {
     const now = today();
-    const [accounts, open] = await Promise.all([listAccounts(), openPositions(now)]);
+    const [accounts, open, summary, revenuePreviousMonth] = await Promise.all([
+      listAccounts(),
+      openPositions(now),
+      invoiceSummary(now),
+      // Umsatzerlöse des Vormonats aus dem Journal, auch aus Buchungen ohne Rechnung in Haben, etwa aus dem Datenimport
+      umsatzImMonat(previousMonthKey(now)),
+    ]);
     return {
-      ...(await invoiceSummary(now)),
+      ...summary,
+      revenuePreviousMonth,
       // Offene Verbindlichkeiten wie in den Auswertungen: gebuchte, über die Bank zu zahlende Belege
       payables: {
         total: open.payablesTotal,
@@ -128,6 +138,21 @@ export const getNewInvoice = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
   .handler(async () => ({ draft: await newDraftDefaults(today()), ...(await invoiceEditorContext()) }));
 
+/** Bezüge für den Rechnungsaustausch im Editor und am festgeschriebenen Beleg. */
+async function replacementReferences({ invoice, correctedBy }: NonNullable<Awaited<ReturnType<typeof getInvoice>>>) {
+  if (invoice.kind !== "rechnung" || invoice.variant !== null) return { replaces: null, replacedBy: null };
+  const { id, number, replacesInvoiceId, status, kind, variant } = schema.invoices;
+  const [replaces] = invoice.replacesInvoiceId ? await db.select({ id, number }).from(schema.invoices).where(eq(id, invoice.replacesInvoiceId)).limit(1) : [];
+  const [replacedBy] = correctedBy.some((row) => row.kind === "storno" && row.status === "final")
+    ? await db
+        .select({ id, number })
+        .from(schema.invoices)
+        .where(and(eq(replacesInvoiceId, invoice.id), eq(status, "final"), eq(kind, "rechnung"), isNull(variant)))
+        .limit(1)
+    : [];
+  return { replaces: replaces ?? null, replacedBy: replacedBy ?? null };
+}
+
 export const getInvoiceDetail = createServerFn({ method: "GET" })
   .middleware([readMiddleware])
   .validator(detailId)
@@ -142,6 +167,7 @@ export const getInvoiceDetail = createServerFn({ method: "GET" })
     return {
       ...result,
       invoice: withoutFiles(result.invoice),
+      ...(await replacementReferences(result)),
       issues,
       leistungsmonat,
       attachments: (await listInvoiceAttachments(data)).map(({ id, filename, size }) => ({ id, filename, size })),
@@ -150,6 +176,8 @@ export const getInvoiceDetail = createServerFn({ method: "GET" })
       /** Weitergabe an das Dokumentenarchiv (Einstellungen › Export) */
       ablage: result.invoice.status === "final" ? await deliveryForInvoice(result.invoice) : null,
       overdue: listed?.listStatus === "ueberfaellig",
+      // Buchung der Rechnung im Journal (#1855); Zahlungen führen über ihren Umsatz dorthin
+      buchungen: (await buchungenZu(["invoice"], [data])).get(data) ?? [],
       // Angebot der Rechnung: über invoices.quote_id oder (ältere Rechnungen aus dem Angebot) über quotes.invoice_id
       fromQuote:
         (
@@ -237,7 +265,7 @@ export const finalizeInvoiceDraft = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     try {
-      const invoice = await finalizeInvoice(context.user.id, data.id, data.bestaetigt);
+      const invoice = await finalizeInvoice(context.user.id, data.id, kleinunternehmerStand, data.bestaetigt);
       deliverSoon();
       return { status: "final" as const, id: invoice.id };
     } catch (error) {
@@ -270,6 +298,22 @@ export const correctFinalInvoice = createServerFn({ method: "POST" })
     return { id: draft.id };
   });
 
+export const copyInvoiceAsDraft = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator(z.uuid())
+  .handler(async ({ data, context }) => {
+    const draft = await copyInvoice(context.user.id, data, today());
+    return { id: draft.id };
+  });
+
+export const copyInvoiceAsReplacementDraft = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator(z.uuid())
+  .handler(async ({ data, context }) => {
+    const draft = await copyInvoice(context.user.id, data, today(), { replacement: true });
+    return { id: draft.id };
+  });
+
 /** Nummernkreise für Rechnungen und Angebote, heute: im Jahr oder durchlaufend */
 export const getNumbering = createServerFn({ method: "GET" })
   .middleware([authMiddleware])
@@ -279,10 +323,23 @@ export const getNumbering = createServerFn({ method: "GET" })
     return { invoice, quote };
   });
 
+/** Die Nummernkreise eines Kunden (#1426): je Art nur, wenn deren Zähler je Kunde läuft, sonst null */
+export const getCustomerNumbering = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  // Wie die übrigen Loader der Kontaktseite: eine kaputte Kennung ist 404, nicht 500 (seiten.spec.ts, „kaputte Adresse“)
+  .validator(({ contactId }: { contactId: string }) => ({ contactId: detailId(contactId) }))
+  .handler(async ({ data }) => contactNumbering(today(), data.contactId));
+
 export const saveNextNumber = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator(z.object({ kind: z.enum(["rechnung", "angebot"]).default("rechnung"), next: z.number().int().min(1).max(999_999) }))
+  .validator(
+    z.object({
+      kind: z.enum(["rechnung", "angebot"]).default("rechnung"),
+      next: z.number().int().min(1).max(999_999),
+      contactId: z.string().uuid().nullable().optional(),
+    }),
+  )
   .handler(async ({ data, context }) => {
-    await setNextNumber(context.user.id, today(), data.next, data.kind);
+    await setNextNumber(context.user.id, today(), data.next, data.kind, data.contactId ?? null);
     return { ok: true };
   });

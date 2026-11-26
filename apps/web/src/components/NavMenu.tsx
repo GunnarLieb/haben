@@ -103,7 +103,7 @@ function NavAccountActions({ onSignOut }: { onSignOut: () => void }) {
         Dokumentation
       </a>
       {/* AGPL § 13: Nutzer im Netz bekommen den Quellcode */}
-      <a href="https://github.com/firsttris/haben" className="nav-link nav-foot-link">
+      <a href="https://github.com/Speicherstadt/haben" className="nav-link nav-foot-link">
         <Icon name="code" />
         Quellcode (AGPL)
       </a>
@@ -166,6 +166,7 @@ export function NavRailBody({
           key={group.label}
           label={group.label}
           icon={group.icon}
+          hinweis={group.hinweis}
           active={group.links.some((link) => routeAktiv(pathname, link.to))}
           {...flyout(group.label)}
         >

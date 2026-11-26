@@ -1,12 +1,15 @@
 import { useServerFn } from "@tanstack/react-start";
 import { useState, type ReactNode } from "react";
 import {
-  ACCENT_PATTERN,
-  contrastOnWhite,
   DEFAULT_DESIGN,
+  eingebautesLayout,
   LETTERHEAD_FONTS,
+  type LayoutDocumentType,
+  layoutLogo,
+  layoutOptionen,
+  layoutVorgaben,
+  type LayoutVorgaben,
   type LetterheadFont,
-  MIN_TEXT_CONTRAST,
   type LetterheadDesign,
   type LetterheadDesignInput,
   type LogoPosition,
@@ -15,10 +18,13 @@ import {
 import { useAction } from "../lib/use-action.ts";
 import { useLoadedState } from "../lib/use-loaded-state.ts";
 import { saveLetterheadDesign } from "../server/functions/logo.ts";
+import { AccentField } from "./AccentField.tsx";
 import { Field } from "./Field.tsx";
 import { layoutHint, LayoutHintText, layoutHintId, type LayoutHints } from "./LayoutHint.tsx";
 import { LogoUpload } from "./LogoUpload.tsx";
 import { NoticeBanner } from "./NoticeBanner.tsx";
+import { Segmented } from "./Segmented.tsx";
+import { LayoutOptionFields } from "./LayoutOptionFields.tsx";
 
 /** Ungespeicherte Änderungen an der Gestaltung: Die Vorschau zeigt sie sofort, gespeichert wird erst auf Zuruf */
 export function useDesignDraft(initial: LetterheadDesign = DEFAULT_DESIGN) {
@@ -52,6 +58,7 @@ const LOGO_SIZE_OPTIONS: { value: LogoSize; label: string; name: string }[] = [
 
 const LOGO_POSITION_OPTIONS: { value: LogoPosition; label: string; name: string }[] = [
   { value: "links", label: "Links", name: "Links" },
+  { value: "mitte", label: "Mitte", name: "Mitte" },
   { value: "rechts", label: "Rechts", name: "Rechts" },
 ];
 
@@ -63,49 +70,6 @@ const SWITCHES = [
   { key: "vatColumn", label: "Spalte USt je Position", positions: true },
 ] as const;
 
-const SWATCHES = [
-  { hex: "#1F6F5C", name: "Grün" },
-  { hex: "#1D4E89", name: "Blau" },
-  { hex: "#6B3FA0", name: "Violett" },
-  { hex: "#9B1C1C", name: "Rot" },
-  { hex: "#B45309", name: "Orange" },
-  { hex: "#3F4A44", name: "Grau" },
-];
-
-export function Segmented<T extends string>({
-  label,
-  options,
-  value,
-  onChange,
-  disabled,
-  describedBy,
-}: {
-  label: string;
-  options: { value: T; label: string; name: string }[];
-  value: T;
-  onChange: (value: T) => void;
-  disabled?: boolean | undefined;
-  describedBy?: string | undefined;
-}) {
-  return (
-    <div className="segmented" role="group" aria-label={label} aria-describedby={describedBy}>
-      {options.map((option) => (
-        <button
-          key={option.value}
-          type="button"
-          className="btn btn-sm"
-          title={option.name}
-          aria-pressed={value === option.value}
-          disabled={disabled}
-          onClick={() => onChange(option.value)}
-        >
-          {option.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 /** Logo und Schalter; gleich im Panel der Vorschau und in den Einstellungen */
 export function DesignOptionFields({
   design,
@@ -114,6 +78,8 @@ export function DesignOptionFields({
   positions = true,
   logoUpload,
   hints,
+  vorgaben,
+  logoStellen,
 }: {
   design: LetterheadDesign;
   onChange: (input: LetterheadDesignInput) => void;
@@ -125,8 +91,15 @@ export function DesignOptionFields({
   logoUpload: ReactNode;
   /** Nur in den Einstellungen: Einstellungen, die ein zugeordnetes eigenes Layout nicht verwendet */
   hints?: LayoutHints | undefined;
+  /** Vorgaben des eingebauten Layouts, wo eines feststeht (Vorschau); nennt die Schrift bei „Wie im Layout“ */
+  vorgaben?: LayoutVorgaben | undefined;
+  /** Stellen, die das eingebaute Layout erlaubt; die anderen sind aus */
+  logoStellen?: readonly LogoPosition[] | undefined;
 }) {
   const hint = (option: string) => layoutHint(hints, option);
+  const stellenAus = LOGO_POSITION_OPTIONS.map((option) => option.value).filter(
+    (stelle) => (stelle === "mitte" && hint("logoMitte")?.aus) || (logoStellen && !logoStellen.includes(stelle)),
+  );
   return (
     <>
       <section>
@@ -137,8 +110,9 @@ export function DesignOptionFields({
               {...control}
               value={design.font}
               disabled={hint("font")?.aus}
-              onChange={(event) => onChange({ font: event.target.value as LetterheadFont })}
+              onChange={(event) => onChange({ font: event.target.value as LetterheadFont | "layout" })}
             >
+              <option value="layout">{vorgaben ? `Wie im Layout (${LETTERHEAD_FONTS[vorgaben.font].name})` : "Wie im Layout"}</option>
               {(Object.keys(LETTERHEAD_FONTS) as LetterheadFont[]).map((font) => (
                 <option key={font} value={font}>
                   {LETTERHEAD_FONTS[font].name}
@@ -162,16 +136,20 @@ export function DesignOptionFields({
             describedBy={layoutHintId("logoSize", hint("logoSize"))}
           />
           <Segmented
-            label="Seite des Logos"
+            label="Stelle des Logos"
             options={LOGO_POSITION_OPTIONS}
             value={design.logoPosition}
             onChange={(logoPosition) => onChange({ logoPosition })}
             disabled={hint("logoPosition")?.aus}
-            describedBy={layoutHintId("logoPosition", hint("logoPosition"))}
+            disabledValues={stellenAus}
+            describedBy={
+              [layoutHintId("logoPosition", hint("logoPosition")), layoutHintId("logoMitte", hint("logoMitte"))].filter(Boolean).join(" ") || undefined
+            }
           />
         </div>
         <LayoutHintText option="logoSize" hint={hint("logoSize")} />
         <LayoutHintText option="logoPosition" hint={hint("logoPosition")} />
+        <LayoutHintText option="logoMitte" hint={hint("logoMitte")} />
       </section>
       <section>
         <h3>Auf dem Blatt</h3>
@@ -214,44 +192,6 @@ export function DesignOptionFields({
   );
 }
 
-function AccentField({ accent, onChange }: { accent: string; onChange: (accent: string) => void }) {
-  const weak = ACCENT_PATTERN.test(accent) && contrastOnWhite(accent) < MIN_TEXT_CONTRAST;
-  const custom = !SWATCHES.some((swatch) => swatch.hex === accent.toUpperCase());
-  return (
-    <section>
-      <h3>Farbe</h3>
-      <div className="color-swatches">
-        <label className="color-swatch color-swatch-custom" title="Eigene Farbe wählen" data-active={custom || undefined}>
-          <span>{custom && <span className="color-swatch-dot" style={{ background: accent }} />}</span>
-          <input type="color" aria-label="Eigene Farbe wählen" value={accent.toLowerCase()} onChange={(event) => onChange(event.target.value.toUpperCase())} />
-        </label>
-        {SWATCHES.map((swatch) => (
-          <button
-            key={swatch.hex}
-            type="button"
-            className="color-swatch"
-            aria-label={swatch.name}
-            aria-pressed={accent.toUpperCase() === swatch.hex}
-            onClick={() => onChange(swatch.hex)}
-          >
-            <span style={{ background: swatch.hex }} />
-          </button>
-        ))}
-      </div>
-      {custom && (
-        <p className="small muted">
-          Eigene Farbe <span className="mono">{accent}</span>
-        </p>
-      )}
-      {weak && (
-        <div className="banner banner-info" role="status">
-          Diese Farbe ist auf weißem Papier schwer zu lesen.
-        </div>
-      )}
-    </section>
-  );
-}
-
 /** Spalte neben dem Blatt: Gestaltung ändern und im Blatt sehen, ohne das Formular zu verlassen */
 export function DesignPanel({
   draft,
@@ -259,9 +199,12 @@ export function DesignPanel({
   positions = true,
   logo,
   onLogoChanged,
+  layoutType,
 }: {
   draft: DesignDraft;
   vatRates: number;
+  /** Belegart der Vorschau; ihr Layout bestimmt Optionen, Vorgaben und erlaubte Stellen des Logos */
+  layoutType: LayoutDocumentType;
   /** Ohne Positionen (Mahnung) fehlen Artikelnummer und Spalte USt */
   positions?: boolean;
   logo: string | null;
@@ -277,11 +220,23 @@ export function DesignPanel({
       draft.commit(sent);
     }, "Gespeichert. Gilt für alles, was ab jetzt erzeugt wird.");
 
+  const ref = draft.design.layouts[layoutType];
+  const layout = ref.kind === "eingebaut" ? eingebautesLayout(ref.id) : undefined;
+  const optionen = layout ? layoutOptionen(layout, draft.design.layoutOptions[layout.id]) : {};
+  const vorgaben = layout ? layoutVorgaben(layout, optionen) : undefined;
+
   return (
     <aside className="design-panel" aria-label="Gestaltung">
       <div className="design-panel-body">
-        <AccentField accent={draft.design.accent} onChange={(accent) => draft.set({ accent })} />
+        <section className="layout-options">
+          <h3>Layout: {layout ? layout.name : "eigenes"}</h3>
+          <p className="small muted">Ändern unter Einstellungen › Beleggestaltung</p>
+          {layout && <LayoutOptionFields layoutId={layout.id} design={draft.design} onChange={(layoutOptions) => draft.set({ layoutOptions })} />}
+        </section>
+        <AccentField accent={draft.design.accent} fromLayout={draft.design.accentFromLayout} layoutAccent={vorgaben?.accent} onChange={draft.set} />
         <DesignOptionFields
+          vorgaben={vorgaben}
+          logoStellen={layout ? layoutLogo(layout, optionen) : undefined}
           design={draft.design}
           onChange={draft.set}
           vatRates={vatRates}
@@ -291,7 +246,8 @@ export function DesignPanel({
       </div>
       <div className="design-panel-foot">
         <p className="small muted">
-          Standardgestaltung: gilt für alles, was ab jetzt erzeugt wird, auch für offene Entwürfe. Festgeschriebene PDFs bleiben unverändert.
+          Gilt für alles, was ab jetzt erzeugt wird, auch für offene Entwürfe; ohne Speichern ist es nur eine Vorschau. Festgeschriebene PDFs bleiben
+          unverändert.
           {draft.dirty && " Beim Schließen der Vorschau gehen ungespeicherte Änderungen verloren."}
         </p>
         <NoticeBanner notice={notice} />
@@ -300,7 +256,7 @@ export function DesignPanel({
             Verwerfen
           </button>
           <button type="button" className="btn btn-primary" disabled={busy || !draft.dirty} onClick={() => void onSave()}>
-            Für alle Belege speichern
+            Gestaltung speichern
           </button>
         </div>
       </div>

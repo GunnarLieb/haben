@@ -5,13 +5,14 @@ import type { BackgroundPages, LetterheadDesign } from "@haben/core";
 import { useAction } from "../lib/use-action.ts";
 import { deleteBackground, getBackground, saveLetterheadDesign, uploadBackground } from "../server/functions/logo.ts";
 import { ConfirmDialog } from "./ConfirmDialog.tsx";
-import { DesignOptionFields, Segmented, useDesignDraft } from "./DesignPanel.tsx";
+import { DesignOptionFields, useDesignDraft } from "./DesignPanel.tsx";
+import { Segmented } from "./Segmented.tsx";
 import { ImageUpload } from "./ImageUpload.tsx";
 import { layoutHint, LayoutHintText, layoutHintId, type LayoutHints } from "./LayoutHint.tsx";
 import { LogoUpload } from "./LogoUpload.tsx";
 import { NoticeBanner } from "./NoticeBanner.tsx";
 
-/** Größe und Seite des Logos und die Schalter, auch ohne einen Beleg geöffnet zu haben */
+/** Größe und Stelle des Logos und die Schalter, auch ohne einen Beleg geöffnet zu haben */
 export function LetterheadOptionsCard({ design, logo, hints }: { design: LetterheadDesign; logo: string | null; hints?: LayoutHints | undefined }) {
   const draft = useDesignDraft(design);
   const router = useRouter();

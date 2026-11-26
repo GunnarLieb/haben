@@ -2,22 +2,16 @@ import { isNotFound, isRedirect } from "@tanstack/react-router";
 import { createMiddleware } from "@tanstack/react-start";
 import { getRequestHeaders, setResponseStatus } from "@tanstack/react-start/server";
 import { ReadOnlyError, runReadOnly } from "./db/actor.ts";
-import { INTERNAL_ERROR, userMessage } from "./errors.ts";
+import { clientError, reportInternalError, userClientError } from "./errors.ts";
+import { withLogComponent } from "./log-kontext.ts";
 import { darf, sessionUser, type Zugriff } from "./rollen.ts";
 
 class UnauthorizedError extends Error {}
 class ForbiddenError extends Error {}
 
-/** Fehler ohne Stack und eigene Properties, denn TanStack Start serialisiert ihn vollständig an den Browser */
-function clientError(message: string): Error {
-  const error = new Error(message);
-  delete error.stack;
-  return error;
-}
-
 /**
  * Übersetzt jeden Fehler aus Validator, Handler oder Sitzungsprüfung für den Browser:
- * Fachfehler und Eingabefehler mit ihrer Meldung, alles andere nur als „Interner Fehler“ (Details ins Log).
+ * Fachfehler und Eingabefehler mit ihrer Meldung, alles andere nur als „Interner Fehler“ mit der Fehler-ID der Zeile im Log.
  */
 function toClientError(error: unknown): unknown {
   if (isRedirect(error) || isNotFound(error)) return error;
@@ -29,10 +23,9 @@ function toClientError(error: unknown): unknown {
     setResponseStatus(403);
     return clientError("Das darf nur der Inhaber. Die Steuerberatung hat nur Lesezugriff.");
   }
-  const message = userMessage(error);
-  if (message !== undefined) return clientError(message);
-  console.error(error);
-  return clientError(INTERNAL_ERROR);
+  const fachfehler = userClientError(error);
+  if (fachfehler) return fachfehler;
+  return clientError(reportInternalError("Unerwarteter Fehler in einer Server Function", error));
 }
 
 /**
@@ -40,17 +33,20 @@ function toClientError(error: unknown): unknown {
  * mit Audit-Akteur wird dann abgelehnt, auch wenn eine lesende Funktion aus Versehen etwas schreibt.
  */
 function withAccess(zugriff: Zugriff) {
-  return createMiddleware({ type: "function" }).server(async ({ next }) => {
-    try {
-      const user = await sessionUser(getRequestHeaders());
-      if (!user) throw new UnauthorizedError();
-      if (!darf(user.role, zugriff)) throw new ForbiddenError();
-      const run = () => next({ context: { user } });
-      return await (user.role === "inhaber" ? run() : runReadOnly(run));
-    } catch (error) {
-      throw toClientError(error);
-    }
-  });
+  return createMiddleware({ type: "function" }).server(({ next }) =>
+    // Jede Logzeile der Server Function trägt den Bereich server (log-kontext.ts), auch die eines unerwarteten Fehlers
+    withLogComponent("server", async () => {
+      try {
+        const user = await sessionUser(getRequestHeaders());
+        if (!user) throw new UnauthorizedError();
+        if (!darf(user.role, zugriff)) throw new ForbiddenError();
+        const run = () => next({ context: { user } });
+        return await (user.role === "inhaber" ? run() : runReadOnly(run));
+      } catch (error) {
+        throw toClientError(error);
+      }
+    }),
+  );
 }
 
 /**

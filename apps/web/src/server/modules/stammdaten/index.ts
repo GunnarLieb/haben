@@ -77,7 +77,7 @@ export {
   storeExchangeRates,
   type ExchangeRate,
 } from "./exchange-rates.ts";
-export { AccentColorError, loadDesign, loadLetterhead, saveAccentColor, saveDesign } from "./letterhead.ts";
+export { AccentColorError, loadDesign, loadLetterhead, lockFooter, saveAccentColor, saveDesign } from "./letterhead.ts";
 export { loadLogo, logoInfo, MAX_LOGO_BYTES, removeLogo, saveLogo } from "./logo.ts";
 export {
   loadNavMark,
@@ -97,8 +97,10 @@ export { typstMeldung } from "./layout-pruefung.ts";
 export {
   artFor,
   assignLayout,
+  assignLayoutToAll,
   createLayout,
   customLayoutFor,
+  mitEingebautemLayout,
   deleteLayout,
   LayoutError,
   LayoutRenderError,
@@ -130,6 +132,22 @@ export {
   type MandateOption,
 } from "./sepa-mandate.ts";
 export {
+  bestaetigeNummer,
+  bestaetigeUstId,
+  evatrAbgeschaltet,
+  evatrMoeglich,
+  letzteBestaetigungen,
+  listUstIdBestaetigungen,
+  ustIdBestaetigungen,
+  ustIdVorBuchen,
+  ustIdVorFestschreiben,
+  type EvatrVerbindung,
+  type UstIdBestaetigung,
+  type UstIdBestaetigungsErgebnis,
+  type UstIdBestaetigungsZustand,
+} from "./ustid-bestaetigung.ts";
+export { ustIdBestaetigungPdf } from "./ustid-bestaetigung-pdf.ts";
+export {
   ansprechpartnerSnapshot,
   ContactPersonError,
   contactPersonInputSchema,
@@ -147,8 +165,20 @@ export {
   createTextBlock,
   listTextBlocks,
   setTextBlockArchived,
+  mahnstufeStandard,
+  standardTexte,
   textBlockInputSchema,
   updateTextBlock,
   type TextBlock,
   type TextBlockInput,
 } from "./text-blocks.ts";
+export {
+  artikelUebernehmen,
+  einheitenUebernehmen,
+  einrichtungUebernehmen,
+  firmaErgaenzen,
+  kontakteUebernehmen,
+  textbausteineUebernehmen,
+  alteStandardEinleitungen,
+} from "./uebernahme.ts";
+export { gestaltungUebernehmen } from "./uebernahme-gestaltung.ts";

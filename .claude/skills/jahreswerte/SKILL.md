@@ -1,6 +1,6 @@
 ---
 name: "jahreswerte"
-description: "Amtliche Jahreswerte in Haben nachziehen: Lohnsteuer-PAP des BMF, Rechengrößen und Beitragssätze der Sozialversicherung, Taxonomie der E-Bilanz, neue ERiC-Version, geänderte Normen des Gesetzeswächters und Stand von SKR03/SKR04. Wenn der Workflow „Jahreswerte prüfen“ ein Issue mit dem Label jahreswerte geöffnet hat oder ein Jahreswechsel-Test fehlschlägt."
+description: "Amtliche Jahreswerte in Haben nachziehen (Lohnsteuer-PAP, Sozialversicherung, E-Bilanz-Taxonomie, ERiC, Normen, SKR03/SKR04). Wenn ein Issue mit dem Label jahreswerte offen ist oder ein Jahreswechsel-Test fehlschlägt."
 ---
 
 # Jahreswerte nachziehen
@@ -67,7 +67,7 @@ Befund `norm-<id>`. `scripts/jahreswerte/normen.json` nennt je Norm, wofür Habe
 
 ## Kontenrahmen
 
-Befunde `datev-skr03`, `datev-skr04`: die Kontenzuordnung (`hgb.ts`, `posting.ts`, `ebilanz.ts`) mit der neuen Ausgabe abgleichen, dann `HABEN_KONTENRAHMEN_STAND` in `scripts/jahreswerte/datev.ts` anheben. Widerspricht eine Kontenfunktion dem Gesetz, einer Kennzahl oder der Taxonomie, gilt die Norm.
+Befunde `datev-skr03`, `datev-skr04`: die Kontenzuordnung (`hgb.ts`, `kontenplan.ts`, `ebilanz.ts`) mit der neuen Ausgabe abgleichen, dann `HABEN_KONTENRAHMEN_STAND` in `scripts/jahreswerte/datev.ts` anheben. Widerspricht eine Kontenfunktion dem Gesetz, einer Kennzahl oder der Taxonomie, gilt die Norm.
 
 Dabei die Konvention [„Neue Systemkonten“](../../../docs/entwicklung.md#konventionen) beachten: neu genutzte Nummern können mit bestehenden eigenen Konten kollidieren.
 

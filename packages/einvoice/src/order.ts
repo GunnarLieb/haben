@@ -2,7 +2,7 @@ import { parseTextFormatting } from "@haben/core";
 import { texts, type Language } from "./i18n.ts";
 import { footerData, itemNumberColumn, recipientLines, renderQuotePdfData, showsCustomerNumber, showsGrossPrices, templateLabels } from "./pdf.ts";
 import { quoteDetails, quotePdfData, type QuoteDocument } from "./quote.ts";
-import { referenceMeta } from "./format.ts";
+import { type MetaZeile, referenceMeta } from "./format.ts";
 import type { Buyer, InvoiceDocumentLine, Letterhead, OrderReferences, Seller } from "./types.ts";
 
 /**
@@ -34,6 +34,8 @@ export interface DeliveryNoteDocument extends Letterhead {
   reference: { kind: "angebot" | "rechnung"; number: string; issueDate: string };
   /** ISO-Datum der Lieferung bzw. Leistung */
   deliveryDate: string;
+  /** ISO-Datum des Beginns, wenn die Leistung über mehrere Tage geht (das Ende ist `deliveryDate`) */
+  serviceFrom?: string;
   /** ISO-Datum des Lieferscheins */
   date: string;
   seller: Seller;
@@ -49,9 +51,12 @@ export interface DeliveryNoteDocument extends Letterhead {
 export function deliveryNotePdfData(doc: DeliveryNoteDocument) {
   const { seller, buyer } = doc;
   const t = texts(doc.language);
-  const meta: { label: string; value: string }[] = [
+  const meta: MetaZeile[] = [
     { label: t.date_, value: t.date(doc.date) },
-    { label: t.deliveryDate, value: t.date(doc.deliveryDate) },
+    // Wie auf Rechnung und Angebot: bei mehreren Tagen der Zeitraum, sonst der eine Tag
+    doc.serviceFrom && doc.serviceFrom < doc.deliveryDate
+      ? { label: t.servicePeriod, value: t.period(doc.serviceFrom, doc.deliveryDate) }
+      : { label: t.deliveryDate, value: t.date(doc.deliveryDate) },
     { label: doc.reference.kind === "angebot" ? t.quoteRef : t.invoiceRef, value: `${doc.reference.number} (${t.date(doc.reference.issueDate)})` },
   ];
   if (showsCustomerNumber(doc)) meta.push({ label: t.customerNumber, value: buyer.kundennummer! });
